@@ -1,26 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  
+  /* Soft Color Palette */
+  --color-sage-50: #f4f7f5;
+  --color-sage-100: #e5ece7;
+  --color-sage-200: #cbded0;
+  --color-sage-500: #618873;
+  --color-sage-600: #507160;
+  --color-sage-700: #415b4e;
+  
+  --color-pastel-50: #f2f6f9;
+  --color-pastel-100: #e3ecf2;
+  --color-pastel-200: #c9dbe7;
+  --color-pastel-500: #698da7;
+  --color-pastel-600: #54748c;
+  
+  --color-canvas: #faf9f6;
+  --color-surface: #ffffff;
+  --color-border: #e9ece8;
+  --color-border-subtle: #f1f3f0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #faf9f6;
+  color: #1e293b;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print utilities for receipt and reports */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  body {
+    background: white;
+  }
 }
