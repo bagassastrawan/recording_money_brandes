@@ -45,12 +45,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     }
   };
 
-  const todayStr = new Intl.DateTimeFormat(language === 'id' ? 'id-ID' : 'en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date());
+  const [mounted, setMounted] = React.useState(false);
+  const [todayStr, setTodayStr] = React.useState('');
+
+  React.useEffect(() => {
+    setMounted(true);
+    setTodayStr(
+      new Intl.DateTimeFormat(language === 'id' ? 'id-ID' : 'en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date())
+    );
+  }, [language]);
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-[#e5ece7] bg-white/85 px-4 md:px-6 backdrop-blur-md">
@@ -145,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         {/* Date Display */}
         <div className="hidden lg:flex items-center gap-2 rounded-xl bg-[#fafbf9] border border-[#e5ece7] px-3 py-1.5 text-xs font-medium text-slate-600">
           <FiCalendar className="h-3.5 w-3.5 text-slate-400" />
-          <span>{todayStr}</span>
+          <span suppressHydrationWarning>{mounted ? todayStr : ''}</span>
         </div>
 
         {/* Quick Action */}

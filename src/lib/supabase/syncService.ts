@@ -9,6 +9,7 @@ import {
   StockOpnameRecord,
   StockDepletionLog,
 } from '@/types';
+import { DEFAULT_ORDER_ITEMS_MAP } from '@/lib/data/mockData';
 
 export interface SyncResult {
   success: boolean;
@@ -94,6 +95,13 @@ export async function syncOrderToSupabase(order: Order): Promise<SyncOrderResult
   }
 
   try {
+    // Encode items into order_notes as a resilient backup payload
+    const itemsJson = JSON.stringify(order.items || []);
+    const cleanNotes = order.orderNotes?.replace(/\n?\[ITEMS_PAYLOAD\]:[\s\S]*$/, '').trim() || '';
+    const orderNotesWithBackup = cleanNotes 
+      ? `${cleanNotes}\n[ITEMS_PAYLOAD]:${itemsJson}` 
+      : `[ITEMS_PAYLOAD]:${itemsJson}`;
+
     // 1. Insert or update master order
     const orderPayload = {
       id: order.id,
@@ -109,7 +117,7 @@ export async function syncOrderToSupabase(order: Order): Promise<SyncOrderResult
       amount_tendered: order.amountTendered || null,
       change: order.change || 0,
       payment_status: 'paid',
-      order_notes: order.orderNotes || '',
+      order_notes: orderNotesWithBackup,
       created_at: order.createdAt || new Date().toISOString(),
     };
 
@@ -153,9 +161,14 @@ export async function syncOrderToSupabase(order: Order): Promise<SyncOrderResult
 
       const { error: itemsError } = await supabase.from('order_items').upsert(itemsToInsert);
       if (itemsError) {
-        console.warn('Supabase sync order_items warning:', itemsError.message);
-        // We still return true if master order succeeded, but notify
-        return { success: true, error: `Items note: ${itemsError.message}` };
+        console.warn('Supabase sync order_items first attempt warning:', itemsError.message);
+        // Resilient Fallback: Retry inserting with product_id set to null in case of foreign key mismatch
+        const fallbackItems = itemsToInsert.map((it) => ({ ...it, product_id: null }));
+        const { error: retryError } = await supabase.from('order_items').upsert(fallbackItems);
+        if (retryError) {
+          console.warn('Supabase sync order_items fallback error:', retryError.message);
+          return { success: true, error: `Items note: ${retryError.message}` };
+        }
       }
     }
 
@@ -408,6 +421,84 @@ export async function syncAllToSupabaseService(params: {
 }
 
 /**
+ * Helper to parse Supabase order row and reliably resolve product items
+ * Sources checked in order:
+ * 1. Direct order_items query map
+ * 2. Embedded order_items relation
+ * 3. [ITEMS_PAYLOAD] JSON backup in order_notes
+ * 4. DEFAULT_ORDER_ITEMS_MAP for seed orders
+ */
+function parseOrderRow(
+  row: Record<string, unknown>,
+  itemsByOrderId?: Record<string, OrderItem[]>
+): Order {
+  const ordId = String(row.id);
+  const orderNumber = String(row.order_number || row.orderNumber || `#ORD-${ordId}`);
+  const rawNotes = String(row.order_notes || row.orderNotes || '');
+
+  // 1. Direct query map from order_items table
+  let items: OrderItem[] = itemsByOrderId && itemsByOrderId[ordId] ? [...itemsByOrderId[ordId]] : [];
+
+  // 2. Embedded order_items relation if present
+  if (items.length === 0 && Array.isArray(row.order_items) && row.order_items.length > 0) {
+    items = (row.order_items as Array<Record<string, unknown>>).map((item) => ({
+      productId: String(item.product_id || ''),
+      productName: String(item.product_name || 'Product'),
+      quantity: Number(item.quantity || 1),
+      price: Number(item.unit_price || item.price || 0),
+      sugarLevel: item.sugar_level ? (item.sugar_level as OrderItem['sugarLevel']) : undefined,
+      notes: item.notes ? String(item.notes) : undefined,
+    }));
+  }
+
+  // 3. Serialized JSON backup payload in order_notes
+  if (items.length === 0 && rawNotes.includes('[ITEMS_PAYLOAD]:')) {
+    try {
+      const parts = rawNotes.split('[ITEMS_PAYLOAD]:');
+      const payloadStr = parts[1]?.trim();
+      if (payloadStr) {
+        const parsed = JSON.parse(payloadStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          items = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing [ITEMS_PAYLOAD]:', e);
+    }
+  }
+
+  // 4. Fallback to DEFAULT_ORDER_ITEMS_MAP for known seed transactions
+  if (items.length === 0) {
+    if (DEFAULT_ORDER_ITEMS_MAP[orderNumber]) {
+      items = [...DEFAULT_ORDER_ITEMS_MAP[orderNumber]];
+    } else if (DEFAULT_ORDER_ITEMS_MAP[ordId]) {
+      items = [...DEFAULT_ORDER_ITEMS_MAP[ordId]];
+    }
+  }
+
+  // Strip metadata payload from user-facing notes
+  const cleanNotes = rawNotes.replace(/\n?\[ITEMS_PAYLOAD\]:[\s\S]*$/, '').trim();
+
+  return {
+    id: ordId,
+    orderNumber,
+    outletId: String(row.outlet_id || row.outletId || 'outlet-1'),
+    outletName: String(row.outlet_name || row.outletName || 'Outlet'),
+    cashierId: String(row.cashier_id || row.cashierId || 'usr-cashier'),
+    cashierName: String(row.cashier_name || row.cashierName || 'Kasir'),
+    items,
+    subtotal: Number(row.subtotal || 0),
+    tax: Number(row.tax || 0),
+    total: Number(row.total || 0),
+    paymentMethod: (row.payment_method as Order['paymentMethod']) || 'cash',
+    amountTendered: row.amount_tendered ? Number(row.amount_tendered) : undefined,
+    change: row.change ? Number(row.change) : undefined,
+    orderNotes: cleanNotes || undefined,
+    createdAt: String(row.created_at || new Date().toISOString()),
+  };
+}
+
+/**
  * DIRECT LIVE QUERY: Fetch today's sales directly from Supabase
  * Specifically used for generating daily sales reports per branch or consolidated
  */
@@ -422,70 +513,74 @@ export async function fetchTodaySalesFromSupabase(outletId?: string): Promise<{
   }
 
   try {
-    // Today's boundaries in local date format (YYYY-MM-DD)
+    // 24-48 hours window to safely cover today in local time and UTC
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    // Buffer back 14 hours to cover UTC difference (e.g. UTC+8 or UTC+7)
+    const bufferStart = new Date(startOfToday.getTime() - 14 * 60 * 60 * 1000).toISOString();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const bufferEnd = new Date(endOfToday.getTime() + 14 * 60 * 60 * 1000).toISOString();
 
     let query = supabase
       .from('orders')
-      .select('*, order_items(*)')
-      .gte('created_at', startOfDay)
-      .lte('created_at', endOfDay)
+      .select('*')
+      .gte('created_at', bufferStart)
+      .lte('created_at', bufferEnd)
       .order('created_at', { ascending: false });
 
     if (outletId && outletId !== 'all') {
       query = query.eq('outlet_id', outletId);
     }
 
-    const { data, error } = await query;
+    const { data: ordersData, error: ordersError } = await query;
 
-    if (error) {
-      console.warn('Direct fetch today sales from Supabase error:', error.message);
-      const isMissingTable = error.message.includes('orders') || error.message.includes('schema cache');
+    if (ordersError) {
+      console.warn('Direct fetch today sales from Supabase error:', ordersError.message);
+      const isMissingTable = ordersError.message.includes('orders') || ordersError.message.includes('schema cache');
       return {
         success: false,
         data: null,
         error: isMissingTable
           ? 'Tabel "orders" belum dibuat di Supabase. Silakan jalankan script supabase/schema.sql di Supabase SQL Editor.'
-          : error.message,
+          : ordersError.message,
         source: 'fallback',
       };
     }
 
-    if (!data || data.length === 0) {
+    if (!ordersData || ordersData.length === 0) {
       return { success: true, data: [], source: 'supabase' };
     }
 
-    const formattedOrders: Order[] = data.map((row: Record<string, unknown>) => {
-      const rawItems = (row.order_items as Array<Record<string, unknown>>) || [];
-      const items: OrderItem[] = rawItems.map((item) => ({
-        productId: String(item.product_id || ''),
-        productName: String(item.product_name || 'Product'),
-        quantity: Number(item.quantity || 1),
-        price: Number(item.unit_price || item.price || 0),
-        sugarLevel: item.sugar_level ? (item.sugar_level as OrderItem['sugarLevel']) : undefined,
-        notes: item.notes ? String(item.notes) : undefined,
-      }));
+    const orderIds = ordersData.map((r: Record<string, unknown>) => String(r.id));
+    const itemsByOrderId: Record<string, OrderItem[]> = {};
 
-      return {
-        id: String(row.id),
-        orderNumber: String(row.order_number || row.orderNumber || `#ORD-${row.id}`),
-        outletId: String(row.outlet_id || row.outletId || 'outlet-1'),
-        outletName: String(row.outlet_name || row.outletName || 'Outlet'),
-        cashierId: String(row.cashier_id || row.cashierId || 'usr-cashier'),
-        cashierName: String(row.cashier_name || row.cashierName || 'Kasir'),
-        items,
-        subtotal: Number(row.subtotal || 0),
-        tax: Number(row.tax || 0),
-        total: Number(row.total || 0),
-        paymentMethod: (row.payment_method as Order['paymentMethod']) || 'cash',
-        amountTendered: row.amount_tendered ? Number(row.amount_tendered) : undefined,
-        change: row.change ? Number(row.change) : undefined,
-        orderNotes: row.order_notes ? String(row.order_notes) : undefined,
-        createdAt: String(row.created_at || new Date().toISOString()),
-      };
-    });
+    try {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', orderIds);
+
+      if (!itemsError && itemsData && itemsData.length > 0) {
+        itemsData.forEach((itemRow: Record<string, unknown>) => {
+          const ordId = String(itemRow.order_id);
+          if (!itemsByOrderId[ordId]) itemsByOrderId[ordId] = [];
+          itemsByOrderId[ordId].push({
+            productId: String(itemRow.product_id || ''),
+            productName: String(itemRow.product_name || 'Product'),
+            quantity: Number(itemRow.quantity || 1),
+            price: Number(itemRow.unit_price || itemRow.price || 0),
+            sugarLevel: itemRow.sugar_level ? (itemRow.sugar_level as OrderItem['sugarLevel']) : undefined,
+            notes: itemRow.notes ? String(itemRow.notes) : undefined,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('order_items direct query note in today sales:', err);
+    }
+
+    const formattedOrders: Order[] = ordersData.map((row: Record<string, unknown>) =>
+      parseOrderRow(row, itemsByOrderId)
+    );
 
     return { success: true, data: formattedOrders, source: 'supabase' };
   } catch (err: unknown) {
@@ -509,52 +604,53 @@ export async function fetchAllOrdersFromSupabase(outletId?: string): Promise<{
   try {
     let query = supabase
       .from('orders')
-      .select('*, order_items(*)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (outletId && outletId !== 'all') {
       query = query.eq('outlet_id', outletId);
     }
 
-    const { data, error } = await query;
+    const { data: ordersData, error: ordersError } = await query;
 
-    if (error) {
-      return { success: false, data: null, error: error.message };
+    if (ordersError) {
+      return { success: false, data: null, error: ordersError.message };
     }
 
-    if (!data || data.length === 0) {
+    if (!ordersData || ordersData.length === 0) {
       return { success: true, data: [] };
     }
 
-    const formattedOrders: Order[] = data.map((row: Record<string, unknown>) => {
-      const rawItems = (row.order_items as Array<Record<string, unknown>>) || [];
-      const items: OrderItem[] = rawItems.map((item) => ({
-        productId: String(item.product_id || ''),
-        productName: String(item.product_name || 'Product'),
-        quantity: Number(item.quantity || 1),
-        price: Number(item.unit_price || item.price || 0),
-        sugarLevel: item.sugar_level ? (item.sugar_level as OrderItem['sugarLevel']) : undefined,
-        notes: item.notes ? String(item.notes) : undefined,
-      }));
+    const orderIds = ordersData.map((r: Record<string, unknown>) => String(r.id));
+    const itemsByOrderId: Record<string, OrderItem[]> = {};
 
-      return {
-        id: String(row.id),
-        orderNumber: String(row.order_number || row.orderNumber || `#ORD-${row.id}`),
-        outletId: String(row.outlet_id || row.outletId || 'outlet-1'),
-        outletName: String(row.outlet_name || row.outletName || 'Outlet'),
-        cashierId: String(row.cashier_id || row.cashierId || 'usr-cashier'),
-        cashierName: String(row.cashier_name || row.cashierName || 'Kasir'),
-        items,
-        subtotal: Number(row.subtotal || 0),
-        tax: Number(row.tax || 0),
-        total: Number(row.total || 0),
-        paymentMethod: (row.payment_method as Order['paymentMethod']) || 'cash',
-        amountTendered: row.amount_tendered ? Number(row.amount_tendered) : undefined,
-        change: row.change ? Number(row.change) : undefined,
-        orderNotes: row.order_notes ? String(row.order_notes) : undefined,
-        createdAt: String(row.created_at || new Date().toISOString()),
-      };
-    });
+    try {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', orderIds);
+
+      if (!itemsError && itemsData && itemsData.length > 0) {
+        itemsData.forEach((itemRow: Record<string, unknown>) => {
+          const ordId = String(itemRow.order_id);
+          if (!itemsByOrderId[ordId]) itemsByOrderId[ordId] = [];
+          itemsByOrderId[ordId].push({
+            productId: String(itemRow.product_id || ''),
+            productName: String(itemRow.product_name || 'Product'),
+            quantity: Number(itemRow.quantity || 1),
+            price: Number(itemRow.unit_price || itemRow.price || 0),
+            sugarLevel: itemRow.sugar_level ? (itemRow.sugar_level as OrderItem['sugarLevel']) : undefined,
+            notes: itemRow.notes ? String(itemRow.notes) : undefined,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('order_items direct query note in all orders:', err);
+    }
+
+    const formattedOrders: Order[] = ordersData.map((row: Record<string, unknown>) =>
+      parseOrderRow(row, itemsByOrderId)
+    );
 
     return { success: true, data: formattedOrders };
   } catch (err: unknown) {

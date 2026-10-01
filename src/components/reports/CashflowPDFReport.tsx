@@ -6,6 +6,7 @@ import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils/formatte
 import { FiPrinter, FiX, FiStore } from '@/components/ui/Flaticon';
 import { fetchTodaySalesFromSupabase } from '@/lib/supabase/syncService';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { DEFAULT_ORDER_ITEMS_MAP } from '@/lib/data/mockData';
 
 interface CashflowPDFReportProps {
   isOpen: boolean;
@@ -92,14 +93,24 @@ export const CashflowPDFReport: React.FC<CashflowPDFReportProps> = ({
 
   // Effective orders based on period filter & Supabase live data
   const displayedOrders = useMemo(() => {
+    let baseList: Order[] = outletOrders;
     if (periodFilter === 'today' && supabaseOrders !== null && supabaseOrders.length > 0) {
-      return supabaseOrders;
-    }
-    if (periodFilter === 'today') {
+      baseList = supabaseOrders;
+    } else if (periodFilter === 'today') {
       const todayOnly = outletOrders.filter((o) => o.createdAt.startsWith(todayStr));
-      return todayOnly.length > 0 ? todayOnly : outletOrders;
+      baseList = todayOnly.length > 0 ? todayOnly : outletOrders;
     }
-    return outletOrders;
+
+    return baseList.map((o) => {
+      const resolvedItems =
+        o.items && o.items.length > 0
+          ? o.items
+          : DEFAULT_ORDER_ITEMS_MAP[o.orderNumber] || DEFAULT_ORDER_ITEMS_MAP[o.id] || [];
+      return {
+        ...o,
+        items: resolvedItems,
+      };
+    });
   }, [periodFilter, supabaseOrders, outletOrders, todayStr]);
 
   // Key Financial Metrics for Today's Sales
@@ -131,7 +142,8 @@ export const CashflowPDFReport: React.FC<CashflowPDFReportProps> = ({
     const salesMap: Record<string, ProductSalesSummary> = {};
 
     displayedOrders.forEach((order) => {
-      order.items.forEach((item) => {
+      const items = order.items || [];
+      items.forEach((item) => {
         const prod = products.find((p) => p.id === item.productId || p.name === item.productName);
         const cat: ProductCategory = prod ? prod.category : 'Coffee';
         const key = item.productId || item.productName;

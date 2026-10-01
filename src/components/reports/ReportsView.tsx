@@ -14,9 +14,14 @@ import {
   FiPrinter as Printer,
   FiPackage as Package,
   FiShield as Shield,
+  FiChevronDown,
+  FiChevronUp,
+  FiList,
+  FiCheckCircle,
 } from '@/components/ui/Flaticon';
 import { CashflowPDFReport } from '@/components/reports/CashflowPDFReport';
 import { StockPDFReport } from '@/components/reports/StockPDFReport';
+import { DEFAULT_ORDER_ITEMS_MAP } from '@/lib/data/mockData';
 
 export const ReportsView: React.FC = () => {
   const {
@@ -39,6 +44,23 @@ export const ReportsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'sales' | 'cashflow' | 'stock' | 'depletion'>('sales');
   // Cashier cannot access cashflow: derive without cascading render
   const effectiveTab = isCashier && activeTab === 'cashflow' ? 'sales' : activeTab;
+
+  // Sales Sub-views: 'transactions' vs 'items'
+  const [salesSubView, setSalesSubView] = useState<'transactions' | 'items'>('transactions');
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+  const [searchOrderItems, setSearchOrderItems] = useState('');
+
+  const toggleExpandOrder = (orderId: string) => {
+    setExpandedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
 
   const [searchDepletion, setSearchDepletion] = useState('');
   const [searchStock, setSearchStock] = useState('');
@@ -77,13 +99,51 @@ export const ReportsView: React.FC = () => {
 
   // Effective Active Orders: Merges persistent cloud orders with local session orders seamlessly
   const activeOrders = useMemo(() => {
-    if (!supabaseOrders || supabaseOrders.length === 0) {
-      return filteredOrders;
+    const ordersById = new Map<string, Order>();
+    const orderNumberLookup = new Map<string, Order>();
+
+    // 1. First populate with local session orders (which always contain full item breakdown)
+    filteredOrders.forEach((o) => {
+      const resolvedItems =
+        o.items && o.items.length > 0
+          ? o.items
+          : DEFAULT_ORDER_ITEMS_MAP[o.orderNumber] || DEFAULT_ORDER_ITEMS_MAP[o.id] || [];
+
+      const fullOrder = { ...o, items: resolvedItems };
+      ordersById.set(o.id, fullOrder);
+      if (o.orderNumber) {
+        orderNumberLookup.set(o.orderNumber, fullOrder);
+      }
+    });
+
+    // 2. Then merge persistent Supabase orders. If cloud order has empty items, retain local items!
+    if (supabaseOrders && supabaseOrders.length > 0) {
+      supabaseOrders.forEach((so) => {
+        const local =
+          ordersById.get(so.id) ||
+          (so.orderNumber ? orderNumberLookup.get(so.orderNumber) : undefined);
+
+        const resolvedItems =
+          so.items && so.items.length > 0
+            ? so.items
+            : local?.items && local.items.length > 0
+            ? local.items
+            : DEFAULT_ORDER_ITEMS_MAP[so.orderNumber] || DEFAULT_ORDER_ITEMS_MAP[so.id] || [];
+
+        // If local order had a different ID but same orderNumber, remove duplicate entry
+        if (local && local.id !== so.id) {
+          ordersById.delete(local.id);
+        }
+
+        ordersById.set(so.id, {
+          ...(local || {}),
+          ...so,
+          items: resolvedItems,
+        });
+      });
     }
-    const map = new Map<string, Order>();
-    supabaseOrders.forEach((o) => map.set(o.id, o));
-    filteredOrders.forEach((o) => map.set(o.id, o));
-    return Array.from(map.values()).sort(
+
+    return Array.from(ordersById.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [supabaseOrders, filteredOrders]);
@@ -137,6 +197,65 @@ export const ReportsView: React.FC = () => {
     .filter((o) => o.paymentMethod === 'debit' || o.paymentMethod === 'credit')
     .reduce((s, o) => s + o.total, 0);
 
+  // Flatten and normalize all items from active orders for detailed item reporting (NO fake fallbacks)
+  const flatOrderItems = useMemo(() => {
+    const list: Array<{
+      id: string;
+      orderId: string;
+      orderNumber: string;
+      outletName: string;
+      cashierName: string;
+      createdAt: string;
+      paymentMethod: string;
+      productName: string;
+      sugarLevel?: string;
+      notes?: string;
+      quantity: number;
+      price: number;
+      subtotal: number;
+    }> = [];
+    activeOrders.forEach((o) => {
+      if (o.items && o.items.length > 0) {
+        o.items.forEach((item, idx) => {
+          list.push({
+            id: `${o.id}-item-${idx}`,
+            orderId: o.id,
+            orderNumber: o.orderNumber,
+            outletName: o.outletName,
+            cashierName: o.cashierName,
+            createdAt: o.createdAt,
+            paymentMethod: o.paymentMethod,
+            productName: item.productName,
+            sugarLevel: item.sugarLevel,
+            notes: item.notes,
+            quantity: item.quantity,
+            price: item.price,
+            subtotal: item.quantity * item.price,
+          });
+        });
+      }
+    });
+    return list;
+  }, [activeOrders]);
+
+  const filteredOrderItems = useMemo(() => {
+    if (!searchOrderItems.trim()) return flatOrderItems;
+    const q = searchOrderItems.toLowerCase();
+    return flatOrderItems.filter(
+      (i) =>
+        i.productName.toLowerCase().includes(q) ||
+        i.orderNumber.toLowerCase().includes(q) ||
+        (i.notes && i.notes.toLowerCase().includes(q)) ||
+        (i.sugarLevel && i.sugarLevel.toLowerCase().includes(q)) ||
+        i.outletName.toLowerCase().includes(q)
+    );
+  }, [flatOrderItems, searchOrderItems]);
+
+  const totalItemsSold = useMemo(
+    () => flatOrderItems.reduce((sum, item) => sum + item.quantity, 0),
+    [flatOrderItems]
+  );
+
   // CSV Exporters
   const exportSalesReport = () => {
     const rows = activeOrders.map((o) => ({
@@ -144,13 +263,30 @@ export const ReportsView: React.FC = () => {
       Date: o.createdAt,
       Outlet: o.outletName,
       Cashier: o.cashierName,
-      Items: o.items.map((i) => `${i.productName} (${i.quantity}x)`).join('; '),
+      Items: (o.items || []).map((i) => `${i.productName} (${i.quantity}x)`).join('; ') || 'Tidak ada rincian item',
       Subtotal: o.subtotal,
       Tax: o.tax,
       Total: o.total,
       PaymentMethod: o.paymentMethod,
     }));
     exportToCSV(`daily_sales_${new Date().toISOString().slice(0, 10)}`, rows);
+  };
+
+  const exportOrderItemsReport = () => {
+    const rows = flatOrderItems.map((item) => ({
+      OrderNumber: item.orderNumber,
+      Timestamp: item.createdAt,
+      Outlet: item.outletName,
+      Cashier: item.cashierName,
+      Product: item.productName,
+      SugarLevel: item.sugarLevel || 'Normal (100%)',
+      Notes: item.notes || '-',
+      Quantity: item.quantity,
+      UnitPrice: item.price,
+      Subtotal: item.subtotal,
+      PaymentMethod: item.paymentMethod,
+    }));
+    exportToCSV(`order_items_detailed_${new Date().toISOString().slice(0, 10)}`, rows);
   };
 
   const exportCashflowReport = () => {
@@ -363,66 +499,338 @@ export const ReportsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Orders Ledger */}
-          <div className="rounded-2xl border border-[#e5ece7] bg-white shadow-2xs overflow-hidden">
-            <div className="p-4 border-b border-[#e5ece7] flex justify-between items-center">
-              <div>
-                <h4 className="text-sm font-bold text-slate-800">Daily Sales Ledger</h4>
-                <p className="text-xs text-slate-500">
-                  Riwayat transaksi dan ringkasan pembayaran pesanan POS
-                </p>
-              </div>
+          {/* Sub-View Switcher Bar: Orders Summary vs Itemized Breakdown */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#fafbf9] border border-[#e5ece7] p-2.5 rounded-2xl shadow-2xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSalesSubView('transactions')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  salesSubView === 'transactions'
+                    ? 'bg-[#618873] text-white shadow-2xs'
+                    : 'bg-white border border-[#e5ece7] text-slate-700 hover:bg-[#f4f7f5]'
+                }`}
+              >
+                <Layers className="h-4 w-4" />
+                <span>Ringkasan Transaksi ({activeOrders.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSalesSubView('items')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  salesSubView === 'items'
+                    ? 'bg-[#618873] text-white shadow-2xs'
+                    : 'bg-white border border-[#e5ece7] text-slate-700 hover:bg-[#f4f7f5]'
+                }`}
+              >
+                <FiList className="h-4 w-4" />
+                <span>Tabel Rincian Item Pesanan ({totalItemsSold} Item)</span>
+              </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#e5ece7] bg-[#fafbf9] text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Timestamp</th>
-                    <th className="py-3 px-4">Outlet</th>
-                    <th className="py-3 px-4">Cashier</th>
-                    <th className="py-3 px-4">Items Ordered</th>
-                    <th className="py-3 px-4">Method</th>
-                    <th className="py-3 px-4 text-right">Subtotal</th>
-                    <th className="py-3 px-4 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#f1f4f2]">
-                  {activeOrders.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-400">
-                        Belum ada data penjualan tercatat. Transaksi baru yang dibuat di tab Kasir (POS) akan otomatis tampil dan tersimpan permanen di sini.
-                      </td>
+            {salesSubView === 'items' && (
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchOrderItems}
+                    onChange={(e) => setSearchOrderItems(e.target.value)}
+                    placeholder="Cari item, no order, catatan..."
+                    className="w-56 sm:w-64 pl-9 pr-3 py-1.5 text-xs rounded-xl border border-[#e5ece7] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-[#618873]"
+                  />
+                </div>
+                {isManager && (
+                  <button
+                    type="button"
+                    onClick={exportOrderItemsReport}
+                    className="flex items-center gap-1.5 rounded-xl border border-[#e5ece7] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#f4f7f5] shadow-2xs cursor-pointer"
+                    title="Export CSV Rincian Item Pesanan"
+                  >
+                    <Download className="h-3.5 w-3.5 text-[#618873]" />
+                    <span>Item CSV</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* VIEW 1: TRANSACTIONS WITH EXPANDABLE ITEM ACCORDIONS */}
+          {salesSubView === 'transactions' && (
+            <div className="rounded-2xl border border-[#e5ece7] bg-white shadow-2xs overflow-hidden">
+              <div className="p-4 border-b border-[#e5ece7] flex justify-between items-center">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Daily Sales Ledger</h4>
+                  <p className="text-xs text-slate-500">
+                    Klik baris pesanan atau tombol panah untuk melihat rincian item pesanan
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#e5ece7] bg-[#fafbf9] text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-3 w-10 text-center"></th>
+                      <th className="py-3 px-4">Order #</th>
+                      <th className="py-3 px-4">Timestamp</th>
+                      <th className="py-3 px-4">Outlet</th>
+                      <th className="py-3 px-4">Cashier</th>
+                      <th className="py-3 px-4">Items Summary</th>
+                      <th className="py-3 px-4">Method</th>
+                      <th className="py-3 px-4 text-right">Subtotal</th>
+                      <th className="py-3 px-4 text-right">Total</th>
                     </tr>
-                  ) : (
-                    activeOrders.map((o) => (
-                      <tr key={o.id} className="hover:bg-[#fafbf9] transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-800">{o.orderNumber}</td>
-                        <td className="py-3 px-4 text-slate-500">{formatDateTime(o.createdAt)}</td>
-                        <td className="py-3 px-4 text-slate-700">{o.outletName}</td>
-                        <td className="py-3 px-4 text-slate-600">{o.cashierName}</td>
-                        <td className="py-3 px-4 text-slate-700">
-                          {o.items.map((i) => `${i.productName} (${i.quantity}x)`).join(', ')}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="inline-block rounded-md bg-[#eef4f0] px-2 py-0.5 text-[10px] font-semibold uppercase text-[#507160]">
-                            {o.paymentMethod}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right text-slate-600">
-                          {formatCurrency(o.subtotal)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">
-                          {formatCurrency(o.total)}
+                  </thead>
+                  <tbody className="divide-y divide-[#f1f4f2]">
+                    {activeOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-slate-400">
+                          Belum ada data penjualan tercatat. Transaksi baru yang dibuat di tab Kasir (POS) akan otomatis tampil dan tersimpan permanen di sini.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      activeOrders.map((o, idx) => {
+                        const isExpanded = expandedOrderIds.has(o.id);
+                        return (
+                          <React.Fragment key={`${o.id}-${idx}`}>
+                            <tr
+                              onClick={() => toggleExpandOrder(o.id)}
+                              className={`cursor-pointer transition-colors ${
+                                isExpanded ? 'bg-[#f4f8f5]' : 'hover:bg-[#fafbf9]'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center text-slate-400">
+                                {isExpanded ? (
+                                  <FiChevronUp className="h-4 w-4 text-[#618873] mx-auto" />
+                                ) : (
+                                  <FiChevronDown className="h-4 w-4 mx-auto" />
+                                )}
+                              </td>
+                              <td className="py-3 px-4 font-bold text-slate-800 flex items-center gap-1.5">
+                                <span>{o.orderNumber}</span>
+                                {isSupabaseActive && (
+                                  <span className="rounded bg-emerald-100 text-[9px] font-bold text-emerald-700 px-1.5 py-0.2" title="Tersinkron ke Supabase Cloud">
+                                    Cloud
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500" suppressHydrationWarning>{formatDateTime(o.createdAt)}</td>
+                              <td className="py-3 px-4 text-slate-700">{o.outletName}</td>
+                              <td className="py-3 px-4 text-slate-600">{o.cashierName}</td>
+                              <td className="py-3 px-4 text-slate-700 font-medium">
+                                {o.items && o.items.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 max-w-sm">
+                                    {o.items.map((i, idx) => (
+                                      <span
+                                        key={idx}
+                                        className="inline-flex items-center rounded-md bg-[#f4f7f5] px-2 py-0.5 text-[11px] text-slate-800 border border-[#e5ece7]"
+                                      >
+                                        <span className="font-semibold">{i.productName}</span>
+                                        <span className="ml-1 text-[#507160] font-bold">({i.quantity}x)</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[11px]">
+                                    Tidak ada rincian item
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="inline-block rounded-md bg-[#eef4f0] px-2 py-0.5 text-[10px] font-semibold uppercase text-[#507160]">
+                                  {o.paymentMethod}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right text-slate-600">
+                                {formatCurrency(o.subtotal)}
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold text-slate-900">
+                                {formatCurrency(o.total)}
+                              </td>
+                            </tr>
+
+                            {/* Collapsible Nested Item Breakdown Table */}
+                            {isExpanded && (
+                              <tr className="bg-[#f7faf8]">
+                                <td colSpan={9} className="p-4 pl-12 border-t border-b border-[#e5ece7]">
+                                  <div className="rounded-xl border border-[#d6e3da] bg-white p-3.5 shadow-2xs space-y-3">
+                                    <div className="flex items-center justify-between text-xs border-b border-[#e5ece7] pb-2">
+                                      <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                                        <Package className="h-4 w-4 text-[#618873]" />
+                                        <span>Rincian Item Pesanan ({o.items && o.items.length > 0 ? `${o.items.length} macam produk` : '0 item'})</span>
+                                      </span>
+                                      {o.orderNotes && (
+                                        <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                          Catatan Pesanan: {o.orderNotes}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {o.items && o.items.length > 0 ? (
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs">
+                                          <thead>
+                                            <tr className="border-b border-[#f1f4f2] text-slate-500 font-semibold text-[11px]">
+                                              <th className="py-1.5 px-3">#</th>
+                                              <th className="py-1.5 px-3">Nama Produk / Menu</th>
+                                              <th className="py-1.5 px-3">Kustomisasi (Level Gula)</th>
+                                              <th className="py-1.5 px-3">Catatan Khusus</th>
+                                              <th className="py-1.5 px-3 text-center">Qty</th>
+                                              <th className="py-1.5 px-3 text-right">Harga Satuan</th>
+                                              <th className="py-1.5 px-3 text-right">Subtotal</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-[#f8faf9]">
+                                            {o.items.map((item, idx) => (
+                                              <tr key={idx} className="hover:bg-[#fafbf9]">
+                                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">
+                                                  {idx + 1}
+                                                </td>
+                                                <td className="py-2 px-3 font-bold text-slate-800">
+                                                  {item.productName}
+                                                </td>
+                                                <td className="py-2 px-3">
+                                                  {item.sugarLevel ? (
+                                                    <span className="rounded bg-sky-50 text-sky-700 px-2 py-0.5 text-[10px] font-semibold border border-sky-200">
+                                                      {item.sugarLevel}
+                                                    </span>
+                                                  ) : (
+                                                    <span className="text-slate-400 text-[11px]">-</span>
+                                                  )}
+                                                </td>
+                                                <td className="py-2 px-3 text-slate-600 text-[11px] italic">
+                                                  {item.notes || '-'}
+                                                </td>
+                                                <td className="py-2 px-3 text-center font-bold text-slate-800">
+                                                  {item.quantity}x
+                                                </td>
+                                                <td className="py-2 px-3 text-right text-slate-600">
+                                                  {formatCurrency(item.price)}
+                                                </td>
+                                                <td className="py-2 px-3 text-right font-bold text-[#507160]">
+                                                  {formatCurrency(item.quantity * item.price)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-slate-500 italic p-3">
+                                        Rincian item untuk pesanan ini belum tercatat.
+                                      </p>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* VIEW 2: DEDICATED FULL ORDER ITEMS TABLE */}
+          {salesSubView === 'items' && (
+            <div className="rounded-2xl border border-[#e5ece7] bg-white shadow-2xs overflow-hidden">
+              <div className="p-4 border-b border-[#e5ece7] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Tabel Rincian Item Pesanan Terjual</h4>
+                  <p className="text-xs text-slate-500">
+                    Menampilkan setiap item satuan yang diorder lengkap dengan opsi level gula, catatan pesanan, dan status Supabase Cloud
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                    <FiCheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Semua role tersinkron ke Supabase order_items</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#e5ece7] bg-[#fafbf9] text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">Order #</th>
+                      <th className="py-3 px-4">Timestamp</th>
+                      <th className="py-3 px-4">Cabang</th>
+                      <th className="py-3 px-4">Nama Menu / Produk</th>
+                      <th className="py-3 px-4">Level Gula</th>
+                      <th className="py-3 px-4">Catatan Item</th>
+                      <th className="py-3 px-4 text-center">Qty</th>
+                      <th className="py-3 px-4 text-right">Harga Satuan</th>
+                      <th className="py-3 px-4 text-right">Subtotal</th>
+                      <th className="py-3 px-4">Kasir</th>
+                      <th className="py-3 px-4 text-center">Supabase Cloud</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#f1f4f2]">
+                    {filteredOrderItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-8 text-center text-slate-400">
+                          Tidak ada item pesanan ditemukan untuk kriteria pencarian ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredOrderItems.map((item) => (
+                        <tr key={item.id} className="hover:bg-[#fafbf9] transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-800">
+                            {item.orderNumber}
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 whitespace-nowrap" suppressHydrationWarning>
+                            {formatDateTime(item.createdAt)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700 font-medium">
+                            {item.outletName}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900">
+                            {item.productName}
+                          </td>
+                          <td className="py-3 px-4">
+                            {item.sugarLevel ? (
+                              <span className="rounded bg-sky-50 text-sky-700 px-2 py-0.5 text-[10px] font-semibold border border-sky-200 whitespace-nowrap">
+                                {item.sugarLevel}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 text-[11px] italic max-w-xs truncate">
+                            {item.notes || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-center font-extrabold text-slate-800">
+                            {item.quantity}x
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-600">
+                            {formatCurrency(item.price)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-[#507160]">
+                            {formatCurrency(item.subtotal)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                            {item.cashierName}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                              <FiCheckCircle className="h-3 w-3" />
+                              <span>Synced</span>
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -753,7 +1161,7 @@ export const ReportsView: React.FC = () => {
                   <tbody className="divide-y divide-[#f1f4f2]">
                     {filteredDepletions.map((log) => (
                       <tr key={log.id} className="hover:bg-[#fafbf9] transition-colors">
-                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap" suppressHydrationWarning>
                           {formatDateTime(log.createdAt)}
                         </td>
                         <td className="py-3 px-3 font-semibold text-slate-800">

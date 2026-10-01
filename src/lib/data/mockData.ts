@@ -1,4 +1,4 @@
-import { Outlet, InventoryItem, Product, Order, Expense, StockOpnameRecord } from '@/types';
+import { Outlet, InventoryItem, Product, Order, OrderItem, Expense, StockOpnameRecord } from '@/types';
 
 export const initialOutlets: Outlet[] = [
   {
@@ -111,11 +111,11 @@ export const initialInventory: InventoryItem[] = [
     outletId: 'outlet-1',
     name: 'Uji Matcha Powder',
     category: 'Syrup & Powder',
-    currentStock: 5,
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA! (Matcha Latte tidak bisa dipesan)
     unit: 'pack',
     minThreshold: 2,
     costPerUnit: 275000,
-    lastUpdated: '2026-09-27T10:00:00Z',
+    lastUpdated: '2026-09-28T09:00:00Z',
   },
   {
     id: 'raw-9',
@@ -144,7 +144,7 @@ export const initialInventory: InventoryItem[] = [
     outletId: 'outlet-1',
     name: 'Kentang Shoestring Beku (Fries)',
     category: 'Bakery Raw',
-    currentStock: 8,
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA! (French Fries tidak bisa dipesan)
     unit: 'pack',
     minThreshold: 3,
     costPerUnit: 65000,
@@ -188,7 +188,7 @@ export const initialInventory: InventoryItem[] = [
     outletId: 'outlet-1',
     name: 'Earl Grey & Artisan Tea',
     category: 'Syrup & Powder',
-    currentStock: 12,
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA! (Earl Grey Tea tidak bisa dipesan)
     unit: 'pack',
     minThreshold: 3,
     costPerUnit: 75000,
@@ -203,6 +203,50 @@ export const initialInventory: InventoryItem[] = [
     unit: 'pack',
     minThreshold: 3,
     costPerUnit: 68000,
+    lastUpdated: '2026-09-28T09:00:00Z',
+  },
+  {
+    id: 'raw-btn-17',
+    outletId: 'outlet-1',
+    name: 'Taro Powder Grade A (Premium)',
+    category: 'Syrup & Powder',
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA!
+    unit: 'pack',
+    minThreshold: 3,
+    costPerUnit: 115000,
+    lastUpdated: '2026-09-28T09:00:00Z',
+  },
+  {
+    id: 'raw-btn-18',
+    outletId: 'outlet-1',
+    name: 'Red Velvet Gourmet Powder',
+    category: 'Syrup & Powder',
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA!
+    unit: 'pack',
+    minThreshold: 2,
+    costPerUnit: 120000,
+    lastUpdated: '2026-09-28T09:00:00Z',
+  },
+  {
+    id: 'raw-btn-19',
+    outletId: 'outlet-1',
+    name: 'Almond Milk Barista Edition',
+    category: 'Dairy & Milk',
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA!
+    unit: 'dus',
+    minThreshold: 3,
+    costPerUnit: 340000,
+    lastUpdated: '2026-09-28T09:00:00Z',
+  },
+  {
+    id: 'raw-btn-20',
+    outletId: 'outlet-1',
+    name: 'Hazelnut Gourmet Syrup',
+    category: 'Syrup & Powder',
+    currentStock: 0, // KOSONG / OUT OF STOCK DI BATANTA!
+    unit: 'btl',
+    minThreshold: 2,
+    costPerUnit: 135000,
     lastUpdated: '2026-09-28T09:00:00Z',
   },
 
@@ -743,7 +787,132 @@ export const initialProducts: Product[] = [
   },
 ];
 
+export const DEFAULT_ORDER_ITEMS_MAP: Record<string, OrderItem[]> = {
+  '#ORD-TODAY-001': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Less Sugar (50%)' },
+    { productId: 'prod-11', productName: 'Butter Croissant', quantity: 1, price: 26000, notes: 'Dihangatkan' },
+  ],
+  '#ORD-TODAY-002': [
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000, notes: 'Sedang' },
+    { productId: 'prod-2', productName: 'Iced Americano', quantity: 1, price: 25000, sugarLevel: 'No Sugar (0%)' },
+  ],
+  '#ORD-TODAY-003': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Normal (100%)' },
+  ],
+  '#ORD-TODAY-004': [
+    { productId: 'prod-4', productName: 'Caramel Macchiato', quantity: 1, price: 34000, sugarLevel: 'Normal (100%)' },
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000 },
+    { productId: 'prod-5', productName: 'Matcha Latte Kyoto', quantity: 1, price: 32000, sugarLevel: 'Less Sugar (50%)' },
+  ],
+  '#ORD-20260928-001': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Less Sugar (50%)' },
+    { productId: 'prod-11', productName: 'Butter Croissant', quantity: 1, price: 26000 },
+  ],
+  '#ORD-20260928-002': [
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000 },
+    { productId: 'prod-2', productName: 'Iced Americano', quantity: 1, price: 25000, sugarLevel: 'No Sugar (0%)' },
+  ],
+  'ord-seed-1': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Less Sugar (50%)' },
+    { productId: 'prod-11', productName: 'Butter Croissant', quantity: 1, price: 26000, notes: 'Dihangatkan' },
+  ],
+  'ord-seed-2': [
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000, notes: 'Sedang' },
+    { productId: 'prod-2', productName: 'Iced Americano', quantity: 1, price: 25000, sugarLevel: 'No Sugar (0%)' },
+  ],
+  'ord-seed-3': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Normal (100%)' },
+  ],
+  'ord-seed-4': [
+    { productId: 'prod-4', productName: 'Caramel Macchiato', quantity: 1, price: 34000, sugarLevel: 'Normal (100%)' },
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000 },
+    { productId: 'prod-5', productName: 'Matcha Latte Kyoto', quantity: 1, price: 32000, sugarLevel: 'Less Sugar (50%)' },
+  ],
+  'ord-101': [
+    { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Less Sugar (50%)' },
+    { productId: 'prod-11', productName: 'Butter Croissant', quantity: 1, price: 26000 },
+  ],
+  'ord-102': [
+    { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000 },
+    { productId: 'prod-2', productName: 'Iced Americano', quantity: 1, price: 25000, sugarLevel: 'No Sugar (0%)' },
+  ],
+};
+
 export const initialOrders: Order[] = [
+  {
+    id: 'ord-seed-1',
+    orderNumber: '#ORD-TODAY-001',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    cashierId: 'usr-cashier',
+    cashierName: 'Rina (Kasir)',
+    items: [
+      { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Less Sugar (50%)' },
+      { productId: 'prod-11', productName: 'Butter Croissant', quantity: 1, price: 26000, notes: 'Dihangatkan' },
+    ],
+    subtotal: 82000,
+    tax: 8200,
+    total: 90200,
+    paymentMethod: 'qris',
+    orderNotes: 'Dine-In Meja 4',
+    createdAt: '2026-10-01T08:15:00.000Z',
+  },
+  {
+    id: 'ord-seed-2',
+    orderNumber: '#ORD-TODAY-002',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    cashierId: 'usr-cashier',
+    cashierName: 'Rina (Kasir)',
+    items: [
+      { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000, notes: 'Sedang' },
+      { productId: 'prod-2', productName: 'Iced Americano', quantity: 1, price: 25000, sugarLevel: 'No Sugar (0%)' },
+    ],
+    subtotal: 63000,
+    tax: 6300,
+    total: 69300,
+    paymentMethod: 'cash',
+    amountTendered: 100000,
+    change: 30700,
+    orderNotes: 'Takeaway',
+    createdAt: '2026-10-01T09:30:00.000Z',
+  },
+  {
+    id: 'ord-seed-3',
+    orderNumber: '#ORD-TODAY-003',
+    outletId: 'outlet-2',
+    outletName: 'Taman Pancing',
+    cashierId: 'usr-cashier',
+    cashierName: 'Budi (Kasir)',
+    items: [
+      { productId: 'prod-3', productName: 'Kopi Susu Gula Aren', quantity: 2, price: 28000, sugarLevel: 'Normal (100%)' },
+    ],
+    subtotal: 56000,
+    tax: 5600,
+    total: 61600,
+    paymentMethod: 'qris',
+    orderNotes: 'Dine-In Meja 2',
+    createdAt: '2026-10-01T10:00:00.000Z',
+  },
+  {
+    id: 'ord-seed-4',
+    orderNumber: '#ORD-TODAY-004',
+    outletId: 'outlet-3',
+    outletName: 'Dewi Sri',
+    cashierId: 'usr-cashier',
+    cashierName: 'Siti (Kasir)',
+    items: [
+      { productId: 'prod-4', productName: 'Caramel Macchiato', quantity: 1, price: 34000, sugarLevel: 'Normal (100%)' },
+      { productId: 'prod-8', productName: 'Nasi Goreng Spesial Barista', quantity: 1, price: 38000 },
+      { productId: 'prod-5', productName: 'Matcha Latte Kyoto', quantity: 1, price: 32000, sugarLevel: 'Less Sugar (50%)' },
+    ],
+    subtotal: 104000,
+    tax: 10400,
+    total: 114400,
+    paymentMethod: 'debit',
+    orderNotes: 'Dine-In Meja 8',
+    createdAt: '2026-10-01T11:20:00.000Z',
+  },
   {
     id: 'ord-101',
     orderNumber: '#ORD-20260928-001',

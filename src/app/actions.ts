@@ -8,6 +8,7 @@ export interface TestConnectionResult {
   productsCount: number;
   outletsStatus?: { ok: boolean; hasCodeColumn: boolean; message: string };
   ordersStatus?: { ok: boolean; message: string };
+  orderItemsStatus?: { ok: boolean; message: string };
   data: Array<{
     id: string;
     name: string;
@@ -57,6 +58,15 @@ export async function testSupabaseConnection(): Promise<TestConnectionResult> {
         : 'Tabel orders aktif dan siap menerima data transaksi.',
     };
 
+    // 4. Diagnostic test on order_items
+    const { error: itemsErr } = await supabase.from('order_items').select('id, order_id').limit(1);
+    const orderItemsStatus = {
+      ok: !itemsErr,
+      message: itemsErr
+        ? itemsErr.message
+        : 'Tabel order_items aktif untuk rincian produk penjualan.',
+    };
+
     const formattedData = (prodData ?? []).map((item: Record<string, unknown>) => ({
       id: String(item.id ?? ''),
       name: String(item.name ?? item.title ?? 'Product'),
@@ -65,9 +75,9 @@ export async function testSupabaseConnection(): Promise<TestConnectionResult> {
     }));
 
     let summaryMessage = 'Koneksi ke Supabase berhasil!';
-    if (!hasCodeColumn || !ordersStatus.ok) {
+    if (!hasCodeColumn || !ordersStatus.ok || !orderItemsStatus.ok) {
       summaryMessage =
-        'Koneksi Supabase aktif, namun skema tabel perlu diperbarui (kolom code pada outlets atau tabel orders belum ada). Silakan jalankan script supabase/schema.sql di Supabase SQL Editor.';
+        'Koneksi Supabase aktif, namun skema tabel perlu disinkronkan. Silakan jalankan script supabase/schema.sql di Supabase SQL Editor.';
     }
 
     return {
@@ -76,8 +86,9 @@ export async function testSupabaseConnection(): Promise<TestConnectionResult> {
       productsCount: formattedData.length,
       outletsStatus,
       ordersStatus,
+      orderItemsStatus,
       data: formattedData,
-      error: !hasCodeColumn || !ordersStatus.ok ? outletsStatus.message : null,
+      error: !hasCodeColumn || !ordersStatus.ok || !orderItemsStatus.ok ? (outletsStatus.message || ordersStatus.message || orderItemsStatus.message) : null,
     };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);

@@ -439,5 +439,30 @@ export const FiShield: React.FC<IconProps> = ({ size = 20, className = '', ...pr
   </svg>
 );
 
+export const FiEdit2: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...defaultStroke} className={className} {...props}>
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+  </svg>
+);
+
+export const FiChevronUp: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...defaultStroke} className={className} {...props}>
+    <polyline points="18 15 12 9 6 15" />
+  </svg>
+);
+
+export const FiList: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...defaultStroke} className={className} {...props}>
+    <line x1="8" y1="6" x2="21" y2="6" strokeWidth={2} />
+    <line x1="8" y1="12" x2="21" y2="12" strokeWidth={2} />
+    <line x1="8" y1="18" x2="21" y2="18" strokeWidth={2} />
+    <line x1="3" y1="6" x2="3.01" y2="6" strokeWidth={3} />
+    <line x1="3" y1="12" x2="3.01" y2="12" strokeWidth={3} />
+    <line x1="3" y1="18" x2="3.01" y2="18" strokeWidth={3} />
+  </svg>
+);
+
+
+
 
 

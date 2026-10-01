@@ -274,7 +274,12 @@ on conflict (id) do update set
 
 -- --------------------------------------------------------------------
 -- 16. SEED DATA ENTRY: INITIAL ORDERS & ORDER ITEMS (Penjualan Hari Ini)
+-- PENTING: Tabel orders (parent) HARUS terisi dahulu sebelum order_items (child)
 -- --------------------------------------------------------------------
+-- Bersihkan seed lama jika ada agar tidak terjadi konflik unique order_number atau id
+delete from public.order_items where order_id in ('ord-seed-1', 'ord-seed-2', 'ord-seed-3', 'ord-seed-4');
+delete from public.orders where id in ('ord-seed-1', 'ord-seed-2', 'ord-seed-3', 'ord-seed-4') or order_number in ('#ORD-TODAY-001', '#ORD-TODAY-002', '#ORD-TODAY-003', '#ORD-TODAY-004');
+
 insert into public.orders (
   id, order_number, outlet_id, outlet_name, cashier_id, cashier_name,
   subtotal, tax, total, payment_method, amount_tendered, change, payment_status, order_notes, created_at
@@ -285,7 +290,16 @@ insert into public.orders (
   ('ord-seed-4', '#ORD-TODAY-004', 'outlet-3', 'Dewi Sri', 'usr-cashier', 'Siti (Kasir)', 104000, 10400, 114400, 'debit', null, 0, 'paid', 'Dine-In Meja 8', now())
 on conflict (id) do update set
   order_number = excluded.order_number,
-  total = excluded.total;
+  outlet_id = excluded.outlet_id,
+  outlet_name = excluded.outlet_name,
+  subtotal = excluded.subtotal,
+  tax = excluded.tax,
+  total = excluded.total,
+  payment_method = excluded.payment_method,
+  amount_tendered = excluded.amount_tendered,
+  change = excluded.change,
+  payment_status = excluded.payment_status,
+  order_notes = excluded.order_notes;
 
 insert into public.order_items (id, order_id, product_id, product_name, quantity, unit_price, subtotal, sugar_level, notes, created_at) values
   ('item-seed-1', 'ord-seed-1', 'prod-3', 'Kopi Susu Gula Aren', 2, 28000, 56000, 'Less Sugar (50%)', null, now()),
@@ -297,5 +311,11 @@ insert into public.order_items (id, order_id, product_id, product_name, quantity
   ('item-seed-7', 'ord-seed-4', 'prod-10', 'Crispy French Fries Shoestring', 1, 24000, 24000, null, 'Extra Saus', now()),
   ('item-seed-8', 'ord-seed-4', 'prod-11', 'Butter Croissant', 1, 26000, 26000, null, null, now())
 on conflict (id) do update set
+  order_id = excluded.order_id,
+  product_id = excluded.product_id,
   product_name = excluded.product_name,
-  subtotal = excluded.subtotal;
+  quantity = excluded.quantity,
+  unit_price = excluded.unit_price,
+  subtotal = excluded.subtotal,
+  sugar_level = excluded.sugar_level,
+  notes = excluded.notes;

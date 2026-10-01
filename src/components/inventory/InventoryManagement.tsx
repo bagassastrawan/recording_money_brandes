@@ -14,6 +14,7 @@ import {
   FiPlus,
   FiX,
   FiStore,
+  FiEdit2,
 } from '@/components/ui/Flaticon';
 
 export const InventoryManagement: React.FC = () => {
@@ -24,6 +25,7 @@ export const InventoryManagement: React.FC = () => {
     currentOutlet,
     restockItem,
     addInventoryItem,
+    updateInventoryItem,
     stockOpnames,
     submitStockOpname,
     user,
@@ -48,7 +50,7 @@ export const InventoryManagement: React.FC = () => {
     ? (selectedLocalOutletId || (selectedOutletId === 'all' ? (outlets[0]?.id || 'outlet-1') : selectedOutletId))
     : (currentOutlet?.id || user.outletId || 'outlet-1');
 
-  // Add Item Modal
+  // Add Item Modal (Manager Only)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemOutletId, setNewItemOutletId] = useState(
@@ -60,6 +62,53 @@ export const InventoryManagement: React.FC = () => {
   const [newItemMinThreshold, setNewItemMinThreshold] = useState<number>(3);
   const [newItemCostPerUnit, setNewItemCostPerUnit] = useState<number>(150000);
   const [syncAlert, setSyncAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Edit Item Modal (Manager Only)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState<InventoryItem['category']>('Coffee Beans');
+  const [editUnit, setEditUnit] = useState<InventoryItem['unit']>('pack');
+  const [editMinThreshold, setEditMinThreshold] = useState<number>(3);
+  const [editCostPerUnit, setEditCostPerUnit] = useState<number>(150000);
+
+  const handleOpenEditModal = (item: InventoryItem) => {
+    setEditingItem(item);
+    setEditName(item.name);
+    setEditCategory(item.category);
+    setEditUnit(item.unit);
+    setEditMinThreshold(item.minThreshold);
+    setEditCostPerUnit(item.costPerUnit);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateItemSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || !editName.trim()) return;
+
+    const targetOutlet = outlets.find((o) => o.id === editingItem.outletId);
+    const confirmMsg = `Konfirmasi Pembaruan Data Bahan Baku:\n\nNama Lama: ${editingItem.name}\nNama Baru: ${editName.trim()}\nCabang: ${targetOutlet?.name || editingItem.outletId}\nKategori: ${editCategory}\nSatuan: ${editUnit}\nBatas Minimum: ${editMinThreshold} ${editUnit}\nHarga Beli: Rp ${Number(editCostPerUnit).toLocaleString('id-ID')}\n\nApakah Anda yakin ingin menyimpan perubahan data barang ini?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const updatedItemData: InventoryItem = {
+      ...editingItem,
+      name: editName.trim(),
+      category: editCategory,
+      unit: editUnit,
+      minThreshold: Number(editMinThreshold),
+      costPerUnit: Number(editCostPerUnit),
+      lastUpdated: new Date().toISOString(),
+    };
+
+    updateInventoryItem(updatedItemData);
+    setIsEditModalOpen(false);
+    setEditingItem(null);
+    setSyncAlert({
+      type: 'success',
+      message: `Data bahan baku "${editName.trim()}" berhasil diperbarui dan diselaraskan ke Supabase database!`,
+    });
+    setTimeout(() => setSyncAlert(null), 6000);
+  };
 
   // Auto-refresh inventory data from Supabase in background on mount
   useEffect(() => {
@@ -261,20 +310,22 @@ export const InventoryManagement: React.FC = () => {
           </button>
         </div>
 
-        {/* Action Button: Add Item */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setNewItemOutletId(activeOutletId);
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-xl bg-[#618873] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#507160] shadow-2xs transition-all cursor-pointer"
-          >
-            <FiPlus className="h-4 w-4" />
-            <span>Tambah Bahan Baku</span>
-          </button>
-        </div>
+        {/* Action Button: Add Item (Manager Only) */}
+        {isManager && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setNewItemOutletId(activeOutletId);
+                setIsAddModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-[#618873] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#507160] shadow-2xs transition-all cursor-pointer"
+            >
+              <FiPlus className="h-4 w-4" />
+              <span>Tambah Bahan Baku</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Sync / Alert Banner */}
@@ -471,24 +522,38 @@ export const InventoryManagement: React.FC = () => {
                           )}
                         </td>
 
-                        {/* Restock Action */}
+                        {/* Action Buttons */}
                         <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => {
-                              setRestockModalItem(item);
-                              setRestockQty(
-                                item.unit === 'g' ? 1000 : item.unit === 'ml' ? 2000 : 100
-                              );
-                              setRestockCost(item.costPerUnit);
-                            }}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shadow-2xs ${
-                              isLowStock
-                                ? 'bg-rose-600 text-white hover:bg-rose-700'
-                                : 'bg-[#618873] text-white hover:bg-[#507160]'
-                            }`}
-                          >
-                            + Restock
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {isManager && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(item)}
+                                className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                                title="Edit nama & data bahan baku"
+                              >
+                                <FiEdit2 className="h-3.5 w-3.5 text-slate-500" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRestockModalItem(item);
+                                setRestockQty(
+                                  item.unit === 'g' ? 1000 : item.unit === 'ml' ? 2000 : 100
+                                );
+                                setRestockCost(item.costPerUnit);
+                              }}
+                              className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
+                                isLowStock
+                                  ? 'bg-rose-600 text-white hover:bg-rose-700'
+                                  : 'bg-[#618873] text-white hover:bg-[#507160]'
+                              }`}
+                            >
+                              + Restock
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -968,6 +1033,136 @@ export const InventoryManagement: React.FC = () => {
                   className="rounded-xl bg-[#618873] px-4 py-2 text-xs font-semibold text-white hover:bg-[#507160] shadow-2xs"
                 >
                   Simpan Bahan Baku
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          EDIT ITEM MODAL (MANAGER ONLY)
+      ======================================================== */}
+      {isEditModalOpen && editingItem && isManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-[#e5ece7] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#e5ece7] pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Ubah Data / Nama Bahan Baku</h3>
+                <p className="text-[11px] text-slate-500">
+                  Perbarui informasi master bahan baku untuk cabang {outlets.find(o => o.id === editingItem.outletId)?.name || editingItem.outletId}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingItem(null);
+                }}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateItemSubmit} className="mt-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">Nama Bahan Baku</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Espresso Blend House Roast..."
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#618873] focus:outline-hidden"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">Kategori</label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value as InventoryItem['category'])}
+                    className="mt-1 w-full rounded-xl border border-[#e5ece7] bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#618873] focus:outline-hidden"
+                  >
+                    <option value="Coffee Beans">Coffee Beans</option>
+                    <option value="Dairy & Milk">Dairy & Milk</option>
+                    <option value="Syrup & Powder">Syrup & Powder</option>
+                    <option value="Packaging">Packaging</option>
+                    <option value="Bakery Raw">Bakery Raw</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">Satuan (Unit)</label>
+                  <select
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value as InventoryItem['unit'])}
+                    className="mt-1 w-full rounded-xl border border-[#e5ece7] bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#618873] focus:outline-hidden"
+                  >
+                    <option value="pack">Pack</option>
+                    <option value="btl">Botol (btl)</option>
+                    <option value="kg">Kilogram (kg)</option>
+                    <option value="dus">Dus / Karton (dus)</option>
+                    <option value="cup">Cup</option>
+                    <option value="pcs">Pieces (pcs)</option>
+                    <option value="pump">Pump</option>
+                    <option value="g">Gram (g)</option>
+                    <option value="ml">Mililiter (ml)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">Batas Min Threshold</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editMinThreshold}
+                    onChange={(e) => setEditMinThreshold(Number(e.target.value))}
+                    className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">HPP / Unit Cost (Rp)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editCostPerUnit}
+                    onChange={(e) => setEditCostPerUnit(Number(e.target.value))}
+                    className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-[#fafbf9] border border-[#e5ece7] rounded-xl text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-800">Stok Saat Ini:</span> {editingItem.currentStock} {editingItem.unit}. Untuk menambah stok fisik, gunakan tombol <span className="font-semibold text-[#618873]">+ Restock</span>.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#e5ece7]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingItem(null);
+                  }}
+                  className="rounded-xl border border-[#e5ece7] px-4 py-2 text-xs font-medium text-slate-600 hover:bg-[#f4f7f5] cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[#618873] px-4 py-2 text-xs font-semibold text-white hover:bg-[#507160] shadow-2xs cursor-pointer"
+                >
+                  Simpan Perubahan
                 </button>
               </div>
             </form>

@@ -21,6 +21,7 @@ import {
   initialOrders,
   initialExpenses,
   initialOpnames,
+  DEFAULT_ORDER_ITEMS_MAP,
 } from '@/lib/data/mockData';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import {
@@ -62,6 +63,7 @@ interface AppContextType {
   
   inventory: InventoryItem[];
   addInventoryItem: (item: Omit<InventoryItem, 'id' | 'lastUpdated'>) => void;
+  updateInventoryItem: (item: InventoryItem) => void;
   updateInventoryStock: (id: string, outletId: string, currentStock: number, costPerUnit?: number) => void;
   restockItem: (id: string, outletId: string, addQuantity: number, cost?: number) => void;
   lowStockItems: InventoryItem[];
@@ -165,7 +167,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setExpenses(expRes.data);
       }
       if (ordRes.success && ordRes.data && ordRes.data.length > 0) {
-        setOrders(ordRes.data);
+        setOrders((prevOrders) => {
+          const prevMap = new Map<string, Order>();
+          prevOrders.forEach((o) => {
+            prevMap.set(o.id, o);
+            if (o.orderNumber) prevMap.set(o.orderNumber, o);
+          });
+
+          const cloudOrderIds = new Set<string>();
+          const mergedCloudOrders = ordRes.data!.map((cloudOrder) => {
+            cloudOrderIds.add(cloudOrder.id);
+            if (cloudOrder.orderNumber) cloudOrderIds.add(cloudOrder.orderNumber);
+
+            const localOrder =
+              prevMap.get(cloudOrder.id) ||
+              (cloudOrder.orderNumber ? prevMap.get(cloudOrder.orderNumber) : undefined);
+
+            const resolvedItems =
+              cloudOrder.items && cloudOrder.items.length > 0
+                ? cloudOrder.items
+                : localOrder && localOrder.items && localOrder.items.length > 0
+                ? localOrder.items
+                : DEFAULT_ORDER_ITEMS_MAP[cloudOrder.orderNumber] ||
+                  DEFAULT_ORDER_ITEMS_MAP[cloudOrder.id] ||
+                  [];
+
+            return {
+              ...cloudOrder,
+              items: resolvedItems,
+            };
+          });
+
+          // Also preserve any recent local session orders not yet returned in cloud query
+          const localOnlyOrders = prevOrders.filter(
+            (o) => !cloudOrderIds.has(o.id) && (!o.orderNumber || !cloudOrderIds.has(o.orderNumber))
+          );
+
+          // Strictly deduplicate by ID to guarantee unique React keys
+          const dedupedMap = new Map<string, Order>();
+          [...mergedCloudOrders, ...localOnlyOrders].forEach((ord) => {
+            if (!dedupedMap.has(ord.id)) {
+              dedupedMap.set(ord.id, ord);
+            }
+          });
+
+          return Array.from(dedupedMap.values()).sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
       }
     } finally {
       setIsLoadingLiveSupabase(false);
@@ -194,7 +243,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const missingInitial = initialInventory.filter((i) => !existingIds.has(i.id));
           setInventory([...parsed.inventory, ...missingInitial]);
         }
-        if (parsed.orders) setOrders(parsed.orders);
+        if (parsed.orders && Array.isArray(parsed.orders)) {
+          const orderMap = new Map<string, Order>();
+          parsed.orders.forEach((o: Order) => {
+            if (!o || !o.id) return;
+            let items = o.items;
+            if (!items || items.length === 0) {
+              const def = DEFAULT_ORDER_ITEMS_MAP[o.orderNumber] || DEFAULT_ORDER_ITEMS_MAP[o.id];
+              if (def) items = def;
+            }
+            if (!orderMap.has(o.id)) {
+              orderMap.set(o.id, { ...o, items: items || [] });
+            }
+          });
+          setOrders(Array.from(orderMap.values()));
+        }
         if (parsed.expenses) setExpenses(parsed.expenses);
         if (parsed.stockOpnames) setStockOpnames(parsed.stockOpnames);
         if (parsed.stockDepletionLogs) setStockDepletionLogs(parsed.stockDepletionLogs);
@@ -290,6 +353,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInventory((prev) => [...prev, itemWithId]);
     // Asynchronous cloud sync to Supabase
     syncIngredientToSupabase(itemWithId);
+  };
+
+  const updateInventoryItem = (updatedItemData: InventoryItem) => {
+    let syncedItem: InventoryItem | undefined;
+    setInventory((prev) =>
+      prev.map((item) => {
+        if (item.id === updatedItemData.id && item.outletId === updatedItemData.outletId) {
+          syncedItem = {
+            ...updatedItemData,
+            lastUpdated: new Date().toISOString(),
+          };
+          return syncedItem;
+        }
+        return item;
+      })
+    );
+    if (syncedItem) {
+      syncIngredientToSupabase(syncedItem);
+    }
   };
 
   const updateInventoryStock = (id: string, outletId: string, currentStock: number, costPerUnit?: number) => {
@@ -434,6 +516,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               actualDeduct = totalDeducted / 1000;
             } else if (matchedItem.unit === 'btl' && bomItem.unit === 'pump') {
               actualDeduct = totalDeducted / 66;
+            } else if (matchedItem.unit === 'pump' && bomItem.unit === 'ml') {
+              actualDeduct = totalDeducted / 15;
+            } else if (matchedItem.unit === 'g' && (bomItem.unit === 'kg' || bomItem.unit === 'pack')) {
+              actualDeduct = totalDeducted * 1000;
             }
           }
 
@@ -454,7 +540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             outletName: currentOutlet.name,
             rawMaterialId: targetId,
             rawMaterialName: targetName,
-            quantityDeducted: actualDeduct,
+            quantityDeducted: Number(actualDeduct.toFixed(2)),
             unit: matchedItem ? matchedItem.unit : bomItem.unit,
             createdAt: new Date().toISOString(),
           });
@@ -469,7 +555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const deduction = deductionMap[item.id].deducted;
           const updated = {
             ...item,
-            currentStock: Math.max(0, item.currentStock - deduction),
+            currentStock: Math.max(0, Math.round((item.currentStock - deduction) * 100) / 100),
             lastUpdated: new Date().toISOString(),
           };
           // Automatically sync updated inventory stock to Supabase in background
@@ -596,6 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteProduct,
         inventory,
         addInventoryItem,
+        updateInventoryItem,
         updateInventoryStock,
         restockItem,
         lowStockItems,

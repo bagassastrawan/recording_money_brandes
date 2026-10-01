@@ -19,14 +19,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <link
           rel="stylesheet"
           href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css"
         />
       </head>
-      <body className="min-h-full flex flex-col bg-[#faf9f6] text-slate-800">
+      <body className="min-h-full flex flex-col bg-[#faf9f6] text-slate-800" suppressHydrationWarning>
         <AppProvider>{children}</AppProvider>
       </body>
     </html>

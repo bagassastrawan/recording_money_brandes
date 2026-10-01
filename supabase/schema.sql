@@ -238,7 +238,9 @@ insert into public.products (id, name, category, price, description, is_active) 
   ('prod-8', 'Nasi Goreng Spesial Barista', 'Food', 38000, 'Nasi goreng gurih dengan bumbu rahasia dapur, telur mata sapi & ayam suwir.', true),
   ('prod-9', 'Spaghetti Aglio Olio Smoked Beef', 'Food', 42000, 'Pasta spaghetti al dente dengan minyak zaitun, bawang putih, cabai & smoked beef.', true),
   ('prod-10', 'Crispy French Fries Shoestring', 'Snack', 24000, 'Kentang goreng renyah disajikan dengan saus sambal & mayones.', true),
-  ('prod-11', 'Butter Croissant', 'Snack', 26000, 'Pastry Perancis berlapis renyah dipanggang fresh setiap hari.', true)
+  ('prod-11', 'Butter Croissant', 'Snack', 26000, 'Pastry Perancis berlapis renyah dipanggang fresh setiap hari.', true),
+  ('prod-12', 'Artisan Earl Grey Milk Tea', 'Non-Coffee', 28000, 'Seduhan teh hitam Earl Grey beraroma citrus bergamot dengan susu segar creamy.', true),
+  ('prod-13', 'Iced Jasmine Green Tea', 'Non-Coffee', 22000, 'Seduhan daun teh hijau melati harum disajikan dingin menyegarkan.', true)
 on conflict (id) do update set
   name = excluded.name,
   category = excluded.category,
@@ -249,7 +251,7 @@ on conflict (id) do update set
 -- --------------------------------------------------------------------
 -- 14. SEED DATA ENTRY: STOK BAHAN BAKU (Ingredients per Outlet)
 -- --------------------------------------------------------------------
--- Batanta (outlet-1)
+-- Batanta (outlet-1) - Dilengkapi beberapa barang tidak tersedia / stok 0
 insert into public.ingredients (id, outlet_id, name, category, current_stock, unit, min_threshold, cost_per_unit) values
   ('raw-1', 'outlet-1', 'House Blend Coffee Beans (Arabica/Robusta)', 'Coffee Beans', 15, 'pack', 4, 250000),
   ('raw-2', 'outlet-1', 'Fresh Whole Milk (Pasteurized)', 'Dairy & Milk', 16, 'dus', 4, 288000),
@@ -257,16 +259,20 @@ insert into public.ingredients (id, outlet_id, name, category, current_stock, un
   ('raw-4', 'outlet-1', 'Paper Hot Cups 12oz', 'Packaging', 480, 'cup', 150, 850),
   ('raw-5', 'outlet-1', 'Plastic Cold Cups 16oz', 'Packaging', 80, 'cup', 120, 950),
   ('raw-6', 'outlet-1', 'Cold Cup Sip Lids', 'Packaging', 250, 'pcs', 100, 400),
-  ('raw-7', 'outlet-1', 'Salted Caramel Sauce', 'Syrup & Powder', 0, 'btl', 2, 140000), -- Out of stock for testing
-  ('raw-8', 'outlet-1', 'Uji Matcha Powder', 'Syrup & Powder', 5, 'pack', 2, 275000),
+  ('raw-7', 'outlet-1', 'Salted Caramel Sauce', 'Syrup & Powder', 0, 'btl', 2, 140000), -- KOSONG / OUT OF STOCK DI BATANTA
+  ('raw-8', 'outlet-1', 'Uji Matcha Powder', 'Syrup & Powder', 0, 'pack', 2, 275000), -- KOSONG / OUT OF STOCK DI BATANTA
   ('raw-9', 'outlet-1', 'Dark Chocolate Sauce', 'Syrup & Powder', 6, 'btl', 2, 130000),
   ('raw-10', 'outlet-1', 'Beras Basmati / Jasmine Pilihan', 'Bakery Raw', 25, 'kg', 8, 18000),
-  ('raw-11', 'outlet-1', 'Kentang Shoestring Beku (Fries)', 'Bakery Raw', 8, 'pack', 3, 65000),
+  ('raw-11', 'outlet-1', 'Kentang Shoestring Beku (Fries)', 'Bakery Raw', 0, 'pack', 3, 65000), -- KOSONG / OUT OF STOCK DI BATANTA
   ('raw-12', 'outlet-1', 'Roti Toast Brioche', 'Bakery Raw', 12, 'pcs', 15, 8000),
   ('raw-13', 'outlet-1', 'Croissant Butter Dough', 'Bakery Raw', 30, 'pcs', 15, 12000),
   ('raw-14', 'outlet-1', 'Vanilla Flavoring Concentrate', 'Syrup & Powder', 150, 'pump', 40, 1500),
-  ('raw-15', 'outlet-1', 'Earl Grey & Artisan Tea', 'Syrup & Powder', 12, 'pack', 3, 75000),
-  ('raw-16', 'outlet-1', 'Jasmine Green Tea Leaves', 'Syrup & Powder', 10, 'pack', 3, 68000)
+  ('raw-15', 'outlet-1', 'Earl Grey & Artisan Tea', 'Syrup & Powder', 0, 'pack', 3, 75000), -- KOSONG / OUT OF STOCK DI BATANTA
+  ('raw-16', 'outlet-1', 'Jasmine Green Tea Leaves', 'Syrup & Powder', 10, 'pack', 3, 68000),
+  ('raw-btn-17', 'outlet-1', 'Taro Powder Grade A (Premium)', 'Syrup & Powder', 0, 'pack', 3, 115000), -- KOSONG / OUT OF STOCK DI BATANTA
+  ('raw-btn-18', 'outlet-1', 'Red Velvet Gourmet Powder', 'Syrup & Powder', 0, 'pack', 2, 120000), -- KOSONG / OUT OF STOCK DI BATANTA
+  ('raw-btn-19', 'outlet-1', 'Almond Milk Barista Edition', 'Dairy & Milk', 0, 'dus', 3, 340000), -- KOSONG / OUT OF STOCK DI BATANTA
+  ('raw-btn-20', 'outlet-1', 'Hazelnut Gourmet Syrup', 'Syrup & Powder', 0, 'btl', 2, 135000) -- KOSONG / OUT OF STOCK DI BATANTA
 on conflict (id) do update set
   name = excluded.name,
   category = excluded.category,
@@ -345,7 +351,12 @@ on conflict (id) do update set
 
 -- --------------------------------------------------------------------
 -- 16. SEED DATA ENTRY: INITIAL ORDERS & ORDER ITEMS (Penjualan Hari Ini)
+-- PENTING: Tabel orders (parent) HARUS terisi dahulu sebelum order_items (child)
 -- --------------------------------------------------------------------
+-- Bersihkan seed lama jika ada agar tidak terjadi konflik unique order_number atau id
+delete from public.order_items where order_id in ('ord-seed-1', 'ord-seed-2', 'ord-seed-3', 'ord-seed-4');
+delete from public.orders where id in ('ord-seed-1', 'ord-seed-2', 'ord-seed-3', 'ord-seed-4') or order_number in ('#ORD-TODAY-001', '#ORD-TODAY-002', '#ORD-TODAY-003', '#ORD-TODAY-004');
+
 insert into public.orders (
   id, order_number, outlet_id, outlet_name, cashier_id, cashier_name,
   subtotal, tax, total, payment_method, amount_tendered, change, payment_status, order_notes, created_at
@@ -356,7 +367,16 @@ insert into public.orders (
   ('ord-seed-4', '#ORD-TODAY-004', 'outlet-3', 'Dewi Sri', 'usr-cashier', 'Siti (Kasir)', 104000, 10400, 114400, 'debit', null, 0, 'paid', 'Dine-In Meja 8', now())
 on conflict (id) do update set
   order_number = excluded.order_number,
-  total = excluded.total;
+  outlet_id = excluded.outlet_id,
+  outlet_name = excluded.outlet_name,
+  subtotal = excluded.subtotal,
+  tax = excluded.tax,
+  total = excluded.total,
+  payment_method = excluded.payment_method,
+  amount_tendered = excluded.amount_tendered,
+  change = excluded.change,
+  payment_status = excluded.payment_status,
+  order_notes = excluded.order_notes;
 
 insert into public.order_items (id, order_id, product_id, product_name, quantity, unit_price, subtotal, sugar_level, notes, created_at) values
   ('item-seed-1', 'ord-seed-1', 'prod-3', 'Kopi Susu Gula Aren', 2, 28000, 56000, 'Less Sugar (50%)', null, now()),
@@ -368,5 +388,11 @@ insert into public.order_items (id, order_id, product_id, product_name, quantity
   ('item-seed-7', 'ord-seed-4', 'prod-10', 'Crispy French Fries Shoestring', 1, 24000, 24000, null, 'Extra Saus', now()),
   ('item-seed-8', 'ord-seed-4', 'prod-11', 'Butter Croissant', 1, 26000, 26000, null, null, now())
 on conflict (id) do update set
+  order_id = excluded.order_id,
+  product_id = excluded.product_id,
   product_name = excluded.product_name,
-  subtotal = excluded.subtotal;
+  quantity = excluded.quantity,
+  unit_price = excluded.unit_price,
+  subtotal = excluded.subtotal,
+  sugar_level = excluded.sugar_level,
+  notes = excluded.notes;

@@ -447,7 +447,7 @@ export const ManagerDashboard: React.FC = () => {
                   <td className="py-3 px-3 text-right font-bold text-slate-800">
                     {formatCurrency(order.total)}
                   </td>
-                  <td className="py-3 px-3 text-right text-slate-400">
+                  <td className="py-3 px-3 text-right text-slate-400" suppressHydrationWarning>
                     {formatDateTime(order.createdAt)}
                   </td>
                 </tr>

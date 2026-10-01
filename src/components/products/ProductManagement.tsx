@@ -32,9 +32,9 @@ export const ProductManagement: React.FC = () => {
   const [formDescription, setFormDescription] = useState('');
   const [formBOM, setFormBOM] = useState<BOMItem[]>([]);
 
-  // Unique raw material list for dropdown
+  // Unique raw material list for dropdown (deduplicated by name across outlets)
   const uniqueRawMaterials = Array.from(
-    new Map(inventory.map((item) => [item.id, item])).values()
+    new Map(inventory.map((item) => [item.name.toLowerCase(), item])).values()
   );
 
   const filteredProducts = products.filter((p) => {

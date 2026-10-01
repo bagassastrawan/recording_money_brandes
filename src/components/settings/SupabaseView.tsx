@@ -180,7 +180,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here`;
                 Notice: {testResult.error}
               </p>
             )}
-            {(!testResult.outletsStatus?.hasCodeColumn || !testResult.ordersStatus?.ok) && (
+            {(!testResult.outletsStatus?.hasCodeColumn || !testResult.ordersStatus?.ok || !testResult.orderItemsStatus?.ok) && (
               <div className="pt-2 border-t border-[#d6e3da]/60 flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleCopyFullSql}
