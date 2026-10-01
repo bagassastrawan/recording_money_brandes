@@ -15,6 +15,7 @@ import {
   FiUserCheck,
   FiChevronDown,
   FiAlertTriangle,
+  FiX,
 } from '@/components/ui/Flaticon';
 
 interface SidebarProps {
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     outlets,
     selectedOutletId,
     setSelectedOutletId,
+    currentOutlet,
     lowStockItems,
     t,
   } = useApp();
@@ -54,21 +56,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Mobile & Tablet Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-xs md:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden animate-in fade-in duration-200"
           onClick={onClose}
         />
       )}
 
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 flex w-72 flex-col border-r border-[#e5ece7] bg-[#ffffff] transition-transform duration-300 md:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-50 flex w-72 flex-col border-r border-[#e5ece7] bg-[#ffffff] transition-transform duration-300 lg:translate-x-0 shadow-lg lg:shadow-none ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Brand Header with Logo */}
-        <div className="flex h-20 items-center justify-between border-b border-[#e5ece7] px-6 bg-gradient-to-r from-[#f4f7f5] to-[#ffffff]">
+        {/* Brand Header with Logo & Mobile Close */}
+        <div className="flex h-20 items-center justify-between border-b border-[#e5ece7] px-5 bg-gradient-to-r from-[#f4f7f5] to-[#ffffff]">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white border border-[#e5ece7] p-1.5 shadow-2xs">
               <Image
@@ -86,6 +88,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <p className="text-xs font-medium text-slate-500">{t.brandSubtitle}</p>
             </div>
           </div>
+
+          {/* Close button on Mobile & Tablet */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg:hidden rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white transition-colors"
+            title="Tutup Menu"
+          >
+            <FiX className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Outlet Switcher */}
@@ -94,21 +106,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             <FiStore className="w-3.5 h-3.5 text-[#618873]" />
             {t.activeOutlet}
           </label>
-          <div className="relative">
-            <select
-              value={selectedOutletId}
-              onChange={(e) => setSelectedOutletId(e.target.value)}
-              className="w-full appearance-none rounded-lg border border-[#e5ece7] bg-white py-2 pl-3 pr-8 text-xs font-medium text-slate-700 shadow-2xs hover:border-[#618873] focus:border-[#618873] focus:outline-hidden focus:ring-2 focus:ring-[#618873]/15 transition-all"
-            >
-              {isManager && <option value="all">{t.allOutlets}</option>}
-              {outlets.map((outlet) => (
-                <option key={outlet.id} value={outlet.id}>
-                  {outlet.name} ({outlet.code})
-                </option>
-              ))}
-            </select>
-            <FiChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-          </div>
+          {isManager ? (
+            <div className="relative">
+              <select
+                value={selectedOutletId}
+                onChange={(e) => setSelectedOutletId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-[#e5ece7] bg-white py-2 pl-3 pr-8 text-xs font-medium text-slate-700 shadow-2xs hover:border-[#618873] focus:border-[#618873] focus:outline-hidden focus:ring-2 focus:ring-[#618873]/15 transition-all"
+              >
+                <option value="all">{t.allOutlets}</option>
+                {outlets.map((outlet) => (
+                  <option key={outlet.id} value={outlet.id}>
+                    {outlet.name} ({outlet.code})
+                  </option>
+                ))}
+              </select>
+              <FiChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-lg border border-[#e5ece7] bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs">
+              <span className="truncate">{currentOutlet?.name || 'Cabang Terpilih'}</span>
+              <span className="rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 px-1.5 py-0.5 border border-emerald-200 shrink-0">
+                Terkunci (Kasir)
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Navigation Menu */}

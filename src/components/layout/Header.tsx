@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       <div className="flex items-center gap-3 md:gap-4">
         <button
           onClick={onToggleSidebar}
-          className="rounded-xl p-2 text-slate-600 hover:bg-[#f4f7f5] md:hidden transition-all"
+          className="rounded-xl p-2 text-slate-600 hover:bg-[#f4f7f5] lg:hidden transition-all"
           aria-label="Toggle navigation"
         >
           <FiMenu className="h-5 w-5 text-slate-700" />

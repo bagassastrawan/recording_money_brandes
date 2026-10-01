@@ -257,15 +257,19 @@ insert into public.ingredients (id, outlet_id, name, category, current_stock, un
   ('raw-4', 'outlet-1', 'Paper Hot Cups 12oz', 'Packaging', 480, 'cup', 150, 850),
   ('raw-5', 'outlet-1', 'Plastic Cold Cups 16oz', 'Packaging', 80, 'cup', 120, 950),
   ('raw-6', 'outlet-1', 'Cold Cup Sip Lids', 'Packaging', 250, 'pcs', 100, 400),
-  ('raw-7', 'outlet-1', 'Salted Caramel Sauce', 'Syrup & Powder', 4, 'btl', 2, 140000),
+  ('raw-7', 'outlet-1', 'Salted Caramel Sauce', 'Syrup & Powder', 0, 'btl', 2, 140000), -- Out of stock for testing
   ('raw-8', 'outlet-1', 'Uji Matcha Powder', 'Syrup & Powder', 5, 'pack', 2, 275000),
   ('raw-9', 'outlet-1', 'Dark Chocolate Sauce', 'Syrup & Powder', 6, 'btl', 2, 130000),
   ('raw-10', 'outlet-1', 'Beras Basmati / Jasmine Pilihan', 'Bakery Raw', 25, 'kg', 8, 18000),
   ('raw-11', 'outlet-1', 'Kentang Shoestring Beku (Fries)', 'Bakery Raw', 8, 'pack', 3, 65000),
   ('raw-12', 'outlet-1', 'Roti Toast Brioche', 'Bakery Raw', 12, 'pcs', 15, 8000),
   ('raw-13', 'outlet-1', 'Croissant Butter Dough', 'Bakery Raw', 30, 'pcs', 15, 12000),
-  ('raw-14', 'outlet-1', 'Vanilla Flavoring Concentrate', 'Syrup & Powder', 150, 'pump', 40, 1500)
+  ('raw-14', 'outlet-1', 'Vanilla Flavoring Concentrate', 'Syrup & Powder', 150, 'pump', 40, 1500),
+  ('raw-15', 'outlet-1', 'Earl Grey & Artisan Tea', 'Syrup & Powder', 12, 'pack', 3, 75000),
+  ('raw-16', 'outlet-1', 'Jasmine Green Tea Leaves', 'Syrup & Powder', 10, 'pack', 3, 68000)
 on conflict (id) do update set
+  name = excluded.name,
+  category = excluded.category,
   current_stock = excluded.current_stock,
   unit = excluded.unit,
   min_threshold = excluded.min_threshold,
@@ -273,13 +277,25 @@ on conflict (id) do update set
 
 -- Taman Pancing (outlet-2)
 insert into public.ingredients (id, outlet_id, name, category, current_stock, unit, min_threshold, cost_per_unit) values
-  ('raw-tpc-1', 'outlet-2', 'House Blend Coffee Beans (Arabica/Robusta)', 'Coffee Beans', 10, 'pack', 3, 250000),
-  ('raw-tpc-2', 'outlet-2', 'Fresh Whole Milk (Pasteurized)', 'Dairy & Milk', 12, 'dus', 3, 288000),
-  ('raw-tpc-3', 'outlet-2', 'Liquid Palm Sugar (Gula Aren Asli)', 'Syrup & Powder', 6, 'btl', 2, 45000),
-  ('raw-tpc-4', 'outlet-2', 'Paper Hot Cups 12oz', 'Packaging', 320, 'cup', 100, 850),
-  ('raw-tpc-5', 'outlet-2', 'Plastic Cold Cups 16oz', 'Packaging', 180, 'cup', 100, 950),
-  ('raw-tpc-6', 'outlet-2', 'Cold Cup Sip Lids', 'Packaging', 200, 'pcs', 80, 400)
+  ('raw-tpc-1', 'outlet-2', 'House Blend Coffee Beans (Arabica/Robusta)', 'Coffee Beans', 12, 'pack', 3, 250000),
+  ('raw-tpc-2', 'outlet-2', 'Fresh Whole Milk (Pasteurized)', 'Dairy & Milk', 14, 'dus', 3, 288000),
+  ('raw-tpc-3', 'outlet-2', 'Liquid Palm Sugar (Gula Aren Asli)', 'Syrup & Powder', 8, 'btl', 2, 45000),
+  ('raw-tpc-4', 'outlet-2', 'Paper Hot Cups 12oz', 'Packaging', 350, 'cup', 100, 850),
+  ('raw-tpc-5', 'outlet-2', 'Plastic Cold Cups 16oz', 'Packaging', 220, 'cup', 100, 950),
+  ('raw-tpc-6', 'outlet-2', 'Cold Cup Sip Lids', 'Packaging', 250, 'pcs', 80, 400),
+  ('raw-tpc-7', 'outlet-2', 'Salted Caramel Sauce', 'Syrup & Powder', 4, 'btl', 2, 140000),
+  ('raw-tpc-8', 'outlet-2', 'Uji Matcha Powder', 'Syrup & Powder', 0, 'pack', 2, 275000), -- Out of stock for testing
+  ('raw-tpc-9', 'outlet-2', 'Dark Chocolate Sauce', 'Syrup & Powder', 5, 'btl', 2, 130000),
+  ('raw-tpc-10', 'outlet-2', 'Beras Basmati / Jasmine Pilihan', 'Bakery Raw', 20, 'kg', 5, 18000),
+  ('raw-tpc-11', 'outlet-2', 'Kentang Shoestring Beku (Fries)', 'Bakery Raw', 6, 'pack', 2, 65000),
+  ('raw-tpc-12', 'outlet-2', 'Roti Toast Brioche', 'Bakery Raw', 15, 'pcs', 10, 8000),
+  ('raw-tpc-13', 'outlet-2', 'Croissant Butter Dough', 'Bakery Raw', 0, 'pcs', 10, 12000), -- Out of stock for testing
+  ('raw-tpc-14', 'outlet-2', 'Vanilla Flavoring Concentrate', 'Syrup & Powder', 120, 'pump', 30, 1500),
+  ('raw-tpc-15', 'outlet-2', 'Earl Grey & Artisan Tea', 'Syrup & Powder', 10, 'pack', 3, 75000),
+  ('raw-tpc-16', 'outlet-2', 'Jasmine Green Tea Leaves', 'Syrup & Powder', 8, 'pack', 2, 68000)
 on conflict (id) do update set
+  name = excluded.name,
+  category = excluded.category,
   current_stock = excluded.current_stock,
   unit = excluded.unit,
   min_threshold = excluded.min_threshold,
@@ -291,8 +307,21 @@ insert into public.ingredients (id, outlet_id, name, category, current_stock, un
   ('raw-dws-2', 'outlet-3', 'Fresh Whole Milk (Pasteurized)', 'Dairy & Milk', 20, 'dus', 5, 288000),
   ('raw-dws-3', 'outlet-3', 'Liquid Palm Sugar (Gula Aren Asli)', 'Syrup & Powder', 10, 'btl', 3, 45000),
   ('raw-dws-4', 'outlet-3', 'Paper Hot Cups 12oz', 'Packaging', 550, 'cup', 150, 850),
-  ('raw-dws-5', 'outlet-3', 'Plastic Cold Cups 16oz', 'Packaging', 310, 'cup', 120, 950)
+  ('raw-dws-5', 'outlet-3', 'Plastic Cold Cups 16oz', 'Packaging', 310, 'cup', 120, 950),
+  ('raw-dws-6', 'outlet-3', 'Cold Cup Sip Lids', 'Packaging', 300, 'pcs', 100, 400),
+  ('raw-dws-7', 'outlet-3', 'Salted Caramel Sauce', 'Syrup & Powder', 6, 'btl', 2, 140000),
+  ('raw-dws-8', 'outlet-3', 'Uji Matcha Powder', 'Syrup & Powder', 6, 'pack', 2, 275000),
+  ('raw-dws-9', 'outlet-3', 'Dark Chocolate Sauce', 'Syrup & Powder', 0, 'btl', 2, 130000), -- Out of stock for testing
+  ('raw-dws-10', 'outlet-3', 'Beras Basmati / Jasmine Pilihan', 'Bakery Raw', 25, 'kg', 5, 18000),
+  ('raw-dws-11', 'outlet-3', 'Kentang Shoestring Beku (Fries)', 'Bakery Raw', 0, 'pack', 3, 65000), -- Out of stock for testing
+  ('raw-dws-12', 'outlet-3', 'Roti Toast Brioche', 'Bakery Raw', 20, 'pcs', 10, 8000),
+  ('raw-dws-13', 'outlet-3', 'Croissant Butter Dough', 'Bakery Raw', 30, 'pcs', 10, 12000),
+  ('raw-dws-14', 'outlet-3', 'Vanilla Flavoring Concentrate', 'Syrup & Powder', 160, 'pump', 40, 1500),
+  ('raw-dws-15', 'outlet-3', 'Earl Grey & Artisan Tea', 'Syrup & Powder', 8, 'pack', 2, 75000),
+  ('raw-dws-16', 'outlet-3', 'Jasmine Green Tea Leaves', 'Syrup & Powder', 6, 'pack', 2, 68000)
 on conflict (id) do update set
+  name = excluded.name,
+  category = excluded.category,
   current_stock = excluded.current_stock,
   unit = excluded.unit,
   min_threshold = excluded.min_threshold,

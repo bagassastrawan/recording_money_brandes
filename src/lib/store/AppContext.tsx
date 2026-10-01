@@ -184,8 +184,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.products) setProducts(parsed.products);
-        if (parsed.inventory) setInventory(parsed.inventory);
+        if (parsed.products) {
+          const existingIds = new Set(parsed.products.map((p: Product) => p.id));
+          const missingInitial = initialProducts.filter((p) => !existingIds.has(p.id));
+          setProducts([...parsed.products, ...missingInitial]);
+        }
+        if (parsed.inventory) {
+          const existingIds = new Set(parsed.inventory.map((i: InventoryItem) => i.id));
+          const missingInitial = initialInventory.filter((i) => !existingIds.has(i.id));
+          setInventory([...parsed.inventory, ...missingInitial]);
+        }
         if (parsed.orders) setOrders(parsed.orders);
         if (parsed.expenses) setExpenses(parsed.expenses);
         if (parsed.stockOpnames) setStockOpnames(parsed.stockOpnames);
@@ -231,13 +239,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: 'manager',
       });
     } else {
+      const cashierOutlet = selectedOutletId === 'all' ? (outlets[0]?.id || 'outlet-1') : selectedOutletId;
       setUser({
         id: 'usr-cashier',
         name: 'Rina (Barista Cashier)',
         email: 'cashier@brandes.com',
         role: 'cashier',
-        outletId: selectedOutletId,
+        outletId: cashierOutlet,
       });
+      setSelectedOutletId(cashierOutlet);
       // Cashiers automatically jump to POS interface
       setActiveTab('pos');
     }
@@ -400,14 +410,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (prod.bom && prod.bom.length > 0) {
         prod.bom.forEach((bomItem) => {
           const totalDeducted = bomItem.quantity * cartItem.quantity;
-          if (!deductionMap[bomItem.rawMaterialId]) {
-            deductionMap[bomItem.rawMaterialId] = {
+
+          // Match the actual ingredient strictly in current outlet
+          const matchedItem = inventory.find(
+            (inv) =>
+              inv.outletId === currentOutlet.id &&
+              (inv.id === bomItem.rawMaterialId ||
+                inv.name.toLowerCase() === bomItem.rawMaterialName.toLowerCase() ||
+                inv.name.toLowerCase().includes(bomItem.rawMaterialName.toLowerCase()) ||
+                bomItem.rawMaterialName.toLowerCase().includes(inv.name.toLowerCase()))
+          );
+
+          const targetId = matchedItem ? matchedItem.id : bomItem.rawMaterialId;
+          const targetName = matchedItem ? matchedItem.name : bomItem.rawMaterialName;
+
+          let actualDeduct = totalDeducted;
+          if (matchedItem) {
+            if ((matchedItem.unit === 'kg' || matchedItem.unit === 'pack') && bomItem.unit === 'g') {
+              actualDeduct = totalDeducted / 1000;
+            } else if (matchedItem.unit === 'dus' && bomItem.unit === 'ml') {
+              actualDeduct = totalDeducted / 12000;
+            } else if (matchedItem.unit === 'btl' && bomItem.unit === 'ml') {
+              actualDeduct = totalDeducted / 1000;
+            } else if (matchedItem.unit === 'btl' && bomItem.unit === 'pump') {
+              actualDeduct = totalDeducted / 66;
+            }
+          }
+
+          if (!deductionMap[targetId]) {
+            deductionMap[targetId] = {
               deducted: 0,
-              unit: bomItem.unit,
-              name: bomItem.rawMaterialName,
+              unit: matchedItem ? matchedItem.unit : bomItem.unit,
+              name: targetName,
             };
           }
-          deductionMap[bomItem.rawMaterialId].deducted += totalDeducted;
+          deductionMap[targetId].deducted += actualDeduct;
 
           newLogs.push({
             id: `log-${Date.now()}-${Math.random()}`,
@@ -415,10 +452,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             orderNumber: newOrder.orderNumber,
             outletId: currentOutlet.id,
             outletName: currentOutlet.name,
-            rawMaterialId: bomItem.rawMaterialId,
-            rawMaterialName: bomItem.rawMaterialName,
-            quantityDeducted: totalDeducted,
-            unit: bomItem.unit,
+            rawMaterialId: targetId,
+            rawMaterialName: targetName,
+            quantityDeducted: actualDeduct,
+            unit: matchedItem ? matchedItem.unit : bomItem.unit,
             createdAt: new Date().toISOString(),
           });
         });

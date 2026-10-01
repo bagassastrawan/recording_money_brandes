@@ -46,7 +46,7 @@ export default function Home() {
       />
 
       {/* Main Content Area */}
-      <div className="flex flex-col md:pl-72 min-h-screen transition-all duration-300">
+      <div className="flex flex-col lg:pl-72 min-h-screen transition-all duration-300">
         {/* Sticky Header */}
         <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
 

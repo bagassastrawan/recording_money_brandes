@@ -13,6 +13,7 @@ import {
   FiSearch,
   FiPlus,
   FiX,
+  FiStore,
 } from '@/components/ui/Flaticon';
 
 export const InventoryManagement: React.FC = () => {
@@ -20,6 +21,7 @@ export const InventoryManagement: React.FC = () => {
     inventory,
     outlets,
     selectedOutletId,
+    currentOutlet,
     restockItem,
     addInventoryItem,
     stockOpnames,
@@ -27,6 +29,8 @@ export const InventoryManagement: React.FC = () => {
     user,
     refreshFromSupabase,
   } = useApp();
+
+  const isManager = user.role === 'manager';
 
   const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'opname' | 'history'>('inventory');
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +40,13 @@ export const InventoryManagement: React.FC = () => {
   const [restockModalItem, setRestockModalItem] = useState<InventoryItem | null>(null);
   const [restockQty, setRestockQty] = useState<number>(1000);
   const [restockCost, setRestockCost] = useState<number>(0);
+
+  // Active viewing outlet: Strictly 1 outlet at a time so stocks are never mixed!
+  // If not manager (cashier), ALWAYS lock to currentOutlet.id and forbid viewing other outlets.
+  const [selectedLocalOutletId, setSelectedLocalOutletId] = useState<string | null>(null);
+  const activeOutletId = isManager
+    ? (selectedLocalOutletId || (selectedOutletId === 'all' ? (outlets[0]?.id || 'outlet-1') : selectedOutletId))
+    : (currentOutlet?.id || user.outletId || 'outlet-1');
 
   // Add Item Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -59,6 +70,10 @@ export const InventoryManagement: React.FC = () => {
     e.preventDefault();
     if (!newItemName.trim()) return;
 
+    const targetOutlet = outlets.find((o) => o.id === newItemOutletId);
+    const confirmMsg = `Konfirmasi Penambahan Bahan Baku Baru:\n\nNama: ${newItemName.trim()}\nCabang: ${targetOutlet?.name || newItemOutletId}\nStok Awal: ${newItemStock} ${newItemUnit}\nBatas Minimum: ${newItemMinThreshold} ${newItemUnit}\nHarga Beli: Rp ${Number(newItemCostPerUnit).toLocaleString('id-ID')}\n\nApakah Anda yakin ingin menambahkan bahan baku ini?`;
+    if (!window.confirm(confirmMsg)) return;
+
     addInventoryItem({
       name: newItemName.trim(),
       outletId: newItemOutletId,
@@ -71,28 +86,26 @@ export const InventoryManagement: React.FC = () => {
 
     setIsAddModalOpen(false);
     setNewItemName('');
-    setNewItemStock(1000);
-    setNewItemMinThreshold(200);
-    setNewItemCostPerUnit(150);
+    setNewItemStock(10);
+    setNewItemMinThreshold(3);
+    setNewItemCostPerUnit(150000);
     setSyncAlert({
       type: 'success',
-      message: `Bahan baku "${newItemName.trim()}" berhasil ditambahkan ke outlet dan disinkronkan ke Cloud!`,
+      message: `Bahan baku "${newItemName.trim()}" (${newItemStock} ${newItemUnit}) berhasil ditambahkan ke cabang ${targetOutlet?.name || newItemOutletId}!`,
     });
-    setTimeout(() => setSyncAlert(null), 4000);
+    setTimeout(() => setSyncAlert(null), 6000);
   };
 
   // Opname Form State
   const [opnameOutletId, setOpnameOutletId] = useState<string>(
-    selectedOutletId === 'all' ? 'outlet-1' : selectedOutletId
+    selectedOutletId === 'all' ? (outlets[0]?.id || 'outlet-1') : selectedOutletId
   );
   const [opnameEmployee, setOpnameEmployee] = useState<string>(user.name);
   const [opnameNotes, setOpnameNotes] = useState<string>('Weekly Friday stock audit');
   const [opnameCounts, setOpnameCounts] = useState<Record<string, { count: number; reason: string }>>({});
 
-  // Filtered inventory list
-  const currentOutletItems = inventory.filter((item) =>
-    selectedOutletId === 'all' ? true : item.outletId === selectedOutletId
-  );
+  // Filtered inventory list: Strictly isolated per active outlet! Never combined or merged.
+  const currentOutletItems = inventory.filter((item) => item.outletId === activeOutletId);
 
   const filteredItems = currentOutletItems.filter((item) => {
     const matchCat = categoryFilter === 'All' || item.category === categoryFilter;
@@ -160,9 +173,12 @@ export const InventoryManagement: React.FC = () => {
 
     const totalVarianceCost = items.reduce((sum, item) => sum + item.varianceCost, 0);
 
+    const confirmMsg = `Konfirmasi Penyesuaian Stok Opname:\n\nCabang: ${targetOutlet?.name}\nTotal Bahan Diaudit: ${items.length} item\nPetugas Audit: ${opnameEmployee}\n\nStok sistem akan disesuaikan dengan hitungan fisik. Lanjutkan pembaruan stok?`;
+    if (!window.confirm(confirmMsg)) return;
+
     submitStockOpname({
       outletId: opnameOutletId,
-      outletName: targetOutlet?.name || 'Outlet',
+      outletName: targetOutlet?.name || 'Cabang',
       performedBy: opnameEmployee,
       date: new Date().toISOString().split('T')[0],
       items,
@@ -171,20 +187,36 @@ export const InventoryManagement: React.FC = () => {
       status: 'approved',
     });
 
-    alert('Weekly Stock Opname audit submitted! System stock has been updated to match physical counts.');
+    setSyncAlert({
+      type: 'success',
+      message: `Audit Stok Opname Berhasil: Stok ${items.length} bahan baku di cabang ${targetOutlet?.name} telah diselaraskan dengan hitungan fisik riil!`,
+    });
     setActiveSubTab('history');
+    setTimeout(() => setSyncAlert(null), 6000);
   };
 
   const handleRestockSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!restockModalItem) return;
+    const targetOutlet = outlets.find((o) => o.id === restockModalItem.outletId);
+    const addedQty = Number(restockQty);
+    const newTotalStock = restockModalItem.currentStock + addedQty;
+
+    const confirmMsg = `Konfirmasi Penambahan Stok:\n\nBahan Baku: ${restockModalItem.name}\nCabang Outlet: ${targetOutlet?.name || restockModalItem.outletId}\nJumlah Penambahan: +${addedQty} ${restockModalItem.unit}\nTotal Stok Baru: ${newTotalStock} ${restockModalItem.unit}\n\nApakah Anda yakin ingin memperbarui dan menyimpan stok ini?`;
+    if (!window.confirm(confirmMsg)) return;
+
     restockItem(
       restockModalItem.id,
       restockModalItem.outletId,
-      Number(restockQty),
+      addedQty,
       restockCost > 0 ? restockCost : undefined
     );
     setRestockModalItem(null);
+    setSyncAlert({
+      type: 'success',
+      message: `Penambahan Stok Berhasil: +${addedQty} ${restockModalItem.unit} "${restockModalItem.name}" berhasil ditambahkan ke cabang ${targetOutlet?.name || restockModalItem.outletId}. Total stok kini ${newTotalStock} ${restockModalItem.unit}.`,
+    });
+    setTimeout(() => setSyncAlert(null), 6000);
   };
 
   return (
@@ -234,7 +266,7 @@ export const InventoryManagement: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setNewItemOutletId(selectedOutletId === 'all' ? (outlets[0]?.id || 'outlet-1') : selectedOutletId);
+              setNewItemOutletId(activeOutletId);
               setIsAddModalOpen(true);
             }}
             className="flex items-center gap-1.5 rounded-xl bg-[#618873] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#507160] shadow-2xs transition-all cursor-pointer"
@@ -248,14 +280,36 @@ export const InventoryManagement: React.FC = () => {
       {/* Sync / Alert Banner */}
       {syncAlert && (
         <div
-          className={`flex items-center justify-between rounded-xl p-3.5 text-xs font-medium border ${
+          className={`flex items-center justify-between rounded-2xl p-4 text-xs font-medium border shadow-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
             syncAlert.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+              : 'bg-rose-50 text-rose-900 border-rose-300'
           }`}
         >
-          <span>{syncAlert.message}</span>
-          <button onClick={() => setSyncAlert(null)} className="text-slate-400 hover:text-slate-600">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-9 w-9 items-center justify-center rounded-xl text-white shrink-0 shadow-2xs ${
+                syncAlert.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'
+              }`}
+            >
+              {syncAlert.type === 'success' ? (
+                <FiCheckCircle className="h-5 w-5" />
+              ) : (
+                <FiAlertTriangle className="h-5 w-5" />
+              )}
+            </div>
+            <div>
+              <p className="font-bold text-xs uppercase tracking-wide">
+                {syncAlert.type === 'success' ? 'Pemberitahuan Stok Berhasil' : 'Peringatan Stok'}
+              </p>
+              <p className="text-xs text-slate-700 mt-0.5">{syncAlert.message}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSyncAlert(null)}
+            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white/80 transition-colors"
+            title="Tutup Notifikasi"
+          >
             <FiX className="h-4 w-4" />
           </button>
         </div>
@@ -266,6 +320,53 @@ export const InventoryManagement: React.FC = () => {
       ======================================================== */}
       {activeSubTab === 'inventory' && (
         <div className="space-y-4">
+          {/* Branch Outlet Selector Bar: Strictly isolate stock per outlet */}
+          {isManager ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-[#fafbf9] border border-[#e5ece7] rounded-2xl shadow-2xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
+                  <FiStore className="h-4 w-4 text-[#618873]" />
+                  <span>Pilih Outlet (Stok Mandiri):</span>
+                </span>
+                {outlets.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocalOutletId(o.id);
+                      setNewItemOutletId(o.id);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                      activeOutletId === o.id
+                        ? 'bg-[#618873] text-white shadow-2xs'
+                        : 'bg-white border border-[#e5ece7] text-slate-700 hover:bg-[#f4f7f5]'
+                    }`}
+                  >
+                    {o.name} ({o.code})
+                  </button>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                Stok setiap cabang outlet berdiri sendiri dan tidak dicampur.
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-[#fafbf9] border border-[#e5ece7] rounded-2xl shadow-2xs">
+              <div className="flex items-center gap-2">
+                <FiStore className="h-4 w-4 text-[#618873]" />
+                <span className="text-xs font-bold text-slate-800">
+                  Cabang: {currentOutlet?.name || 'Cabang Ini'} ({currentOutlet?.code})
+                </span>
+                <span className="rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 px-2 py-0.5 border border-emerald-200">
+                  Akses Kasir Terkunci
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                1 outlet tidak dapat melihat atau mengubah stok cabang lain.
+              </div>
+            </div>
+          )}
+
           {/* Search & Category Filter */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -420,17 +521,23 @@ export const InventoryManagement: React.FC = () => {
                   <label className="text-[11px] font-semibold text-slate-400 block mb-1">
                     Audited Outlet
                   </label>
-                  <select
-                    value={opnameOutletId}
-                    onChange={(e) => setOpnameOutletId(e.target.value)}
-                    className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-hidden"
-                  >
-                    {outlets.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
+                  {isManager ? (
+                    <select
+                      value={opnameOutletId}
+                      onChange={(e) => setOpnameOutletId(e.target.value)}
+                      className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-hidden"
+                    >
+                      {outlets.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-xl border border-[#e5ece7] bg-white px-3 py-1.5 text-xs font-bold text-slate-700">
+                      {currentOutlet?.name || 'Cabang Ini'}
+                    </div>
+                  )}
                 </div>
 
                 <div>
