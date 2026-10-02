@@ -877,16 +877,21 @@ export async function syncProductToSupabase(product: Product): Promise<boolean> 
       return false;
     }
 
-    // Sync BOM recipes if present
+    // Cleanly sync BOM recipes to product_ingredients table
+    await supabase.from('product_ingredients').delete().eq('product_id', product.id);
+
     if (product.bom && product.bom.length > 0) {
       const bomPayload = product.bom.map((b, idx) => ({
-        id: `${product.id}-bom-${idx + 1}`,
+        id: `${product.id}-bom-${idx + 1}-${Date.now()}`,
         product_id: product.id,
         ingredient_name: b.rawMaterialName,
         quantity: b.quantity,
         unit: b.unit,
       }));
-      await supabase.from('product_ingredients').upsert(bomPayload);
+      const { error: bomErr } = await supabase.from('product_ingredients').insert(bomPayload);
+      if (bomErr) {
+        console.warn('Supabase sync product_ingredients error:', bomErr.message);
+      }
     }
     return true;
   } catch (err) {
@@ -901,6 +906,7 @@ export async function syncProductToSupabase(product: Product): Promise<boolean> 
 export async function deleteProductFromSupabase(id: string): Promise<boolean> {
   if (!supabase) return false;
   try {
+    await supabase.from('product_ingredients').delete().eq('product_id', id);
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) {
       console.warn('Supabase delete product error:', error.message);

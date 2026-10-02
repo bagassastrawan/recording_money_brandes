@@ -24,26 +24,8 @@ import {
   Info,
 } from 'lucide-react';
 
-const COMMON_EQUIPMENT_PRESETS = [
-  'Mesin Espresso Komersial 2-Group',
-  'Grinder Espresso On-Demand',
-  'Tamper 58mm & Tamping Mat',
-  'Timbangan Digital Barista',
-  'Milk Steaming Pitcher',
-  'Dispenser Pompa Sirup',
-  'Ice Maker Machine',
-  'Cup Sealer Machine',
-  'Shaker Stainless Steel',
-  'Chasen (Bamboo Whisk)',
-  'Deep Fryer Elektrik',
-  'Wok Burner High Pressure',
-  'Toaster Roti Komersial',
-  'Oven Convection Bakery',
-  'Blender Komersial',
-];
-
 export const ProductManagement: React.FC = () => {
-  const { products, inventory, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, inventory, addProduct, updateProduct, deleteProduct, showConfirm } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
@@ -58,10 +40,7 @@ export const ProductManagement: React.FC = () => {
   const [formCategory, setFormCategory] = useState<ProductCategory>('Coffee');
   const [formPrice, setFormPrice] = useState<number>(30000);
   const [formDescription, setFormDescription] = useState('');
-  const [formEquipment, setFormEquipment] = useState<string[]>([]);
-  const [newEquipmentInput, setNewEquipmentInput] = useState('');
   const [formBOM, setFormBOM] = useState<BOMItem[]>([]);
-  const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
 
   // Unique raw material list for dropdown
   const uniqueRawMaterials = Array.from(
@@ -93,8 +72,6 @@ export const ProductManagement: React.FC = () => {
     setFormCategory('Coffee');
     setFormPrice(30000);
     setFormDescription('');
-    setFormEquipment(['Mesin Espresso Komersial 2-Group', 'Grinder Espresso On-Demand']);
-    setNewEquipmentInput('');
     setFormBOM([
       {
         rawMaterialId: uniqueRawMaterials[0]?.id || 'raw-1',
@@ -113,25 +90,8 @@ export const ProductManagement: React.FC = () => {
     setFormCategory(product.category);
     setFormPrice(product.price);
     setFormDescription(product.description);
-    setFormEquipment(product.equipment || []);
-    setNewEquipmentInput('');
     setFormBOM(product.bom || []);
     setModalMode('edit');
-  };
-
-  const handleDuplicateProduct = (product: Product, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    addProduct({
-      name: `${product.name} (Salinan)`,
-      category: product.category,
-      price: product.price,
-      description: product.description,
-      bom: [...(product.bom || [])],
-      equipment: [...(product.equipment || [])],
-      isActive: true,
-    });
-    setFeedbackNotice(`Menu "${product.name}" berhasil diduplikasi.`);
-    setTimeout(() => setFeedbackNotice(null), 4000);
   };
 
   const handleToggleActive = (product: Product, e?: React.MouseEvent) => {
@@ -144,31 +104,16 @@ export const ProductManagement: React.FC = () => {
 
   const handleDeleteProduct = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Hapus produk "${product.name}" dari katalog ERP?`)) {
-      deleteProduct(product.id);
-      setFeedbackNotice(`Produk "${product.name}" telah dihapus.`);
-      setTimeout(() => setFeedbackNotice(null), 4000);
-    }
-  };
-
-  const handleAddEquipment = () => {
-    const trimmed = newEquipmentInput.trim();
-    if (trimmed && !formEquipment.includes(trimmed)) {
-      setFormEquipment((prev) => [...prev, trimmed]);
-      setNewEquipmentInput('');
-    }
-  };
-
-  const handleRemoveEquipment = (eq: string) => {
-    setFormEquipment((prev) => prev.filter((item) => item !== eq));
-  };
-
-  const handleTogglePreset = (preset: string) => {
-    if (formEquipment.includes(preset)) {
-      setFormEquipment((prev) => prev.filter((item) => item !== preset));
-    } else {
-      setFormEquipment((prev) => [...prev, preset]);
-    }
+    showConfirm({
+      title: `Hapus Menu "${product.name}"?`,
+      message: 'Menu ini beserta seluruh resep takaran BOM akan dihapus dari katalog ERP & database Supabase secara permanen.',
+      confirmText: 'Ya, Hapus Menu',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: () => {
+        deleteProduct(product.id);
+      },
+    });
   };
 
   const handleAddBOMRow = () => {
@@ -227,11 +172,9 @@ export const ProductManagement: React.FC = () => {
         category: formCategory,
         price: Number(formPrice),
         description: formDescription.trim(),
-        equipment: formEquipment,
         bom: formBOM,
         isActive: true,
       });
-      setFeedbackNotice(`Menu baru "${formName.trim()}" berhasil ditambahkan ke katalog.`);
     } else if (modalMode === 'edit' && editingProduct) {
       updateProduct({
         ...editingProduct,
@@ -239,14 +182,11 @@ export const ProductManagement: React.FC = () => {
         category: formCategory,
         price: Number(formPrice),
         description: formDescription.trim(),
-        equipment: formEquipment,
         bom: formBOM,
       });
-      setFeedbackNotice(`Data & resep menu "${formName.trim()}" berhasil diperbarui.`);
     }
 
     setModalMode(null);
-    setTimeout(() => setFeedbackNotice(null), 4000);
   };
 
   const modalCOGS = calculateBOMCost(formBOM, inventory);
@@ -276,13 +216,6 @@ export const ProductManagement: React.FC = () => {
           <span>Tambah Menu Baru</span>
         </button>
       </div>
-
-      {feedbackNotice && (
-        <div className="flex items-center gap-2.5 rounded-xl bg-emerald-50 border border-emerald-300 p-3.5 text-xs font-semibold text-emerald-800 animate-in fade-in duration-200">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span>{feedbackNotice}</span>
-        </div>
-      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -502,60 +435,75 @@ export const ProductManagement: React.FC = () => {
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* SECTION 1: EQUIPMENT (PERALATAN) */}
-                                <div className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] p-3.5 space-y-2">
-                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                    <Wrench className="h-4 w-4 text-[#618873]" />
-                                    <span>Equipment / Peralatan Kerja (Mesin & Tools):</span>
+                              {/* FULL-WIDTH RESEP BOM & ESTIMASI HPP */}
+                              <div className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                                    <Layers className="h-4 w-4 text-[#618873]" />
+                                    <span>Resep Takaran Bahan Baku (BOM per Porsi):</span>
                                   </div>
-                                  <div className="flex flex-wrap gap-1.5 pt-1">
-                                    {prod.equipment && prod.equipment.length > 0 ? (
-                                      prod.equipment.map((eq, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="inline-flex items-center gap-1 rounded-lg bg-white border border-[#d6e3da] px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs"
-                                        >
-                                          <span className="h-1.5 w-1.5 rounded-full bg-[#618873]" />
-                                          {eq}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <p className="text-xs text-slate-400 italic">
-                                        Belum ada data peralatan yang dikaitkan. Klik tombol Edit untuk menambahkan peralatan.
-                                      </p>
-                                    )}
-                                  </div>
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    Total {prod.bom ? prod.bom.length : 0} Komponen Bahan
+                                  </span>
                                 </div>
 
-                                {/* SECTION 2: BOM INGREDIENTS (RESEP BAHAN BAKU) */}
-                                <div className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] p-3.5 space-y-2">
-                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                    <Layers className="h-4 w-4 text-[#618873]" />
-                                    <span>Resep Bahan Baku (BOM Takaran per Porsi):</span>
+                                {prod.bom && prod.bom.length > 0 ? (
+                                  <div className="overflow-x-auto rounded-lg border border-[#e5ece7] bg-white">
+                                    <table className="w-full text-left text-xs">
+                                      <thead>
+                                        <tr className="border-b border-[#e5ece7] bg-[#fafbf9] text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                                          <th className="py-2.5 px-3 w-8 text-center">No</th>
+                                          <th className="py-2.5 px-3">Bahan Baku</th>
+                                          <th className="py-2.5 px-3 text-center">Takaran per Porsi</th>
+                                          <th className="py-2.5 px-3 text-right">Biaya per Satuan</th>
+                                          <th className="py-2.5 px-3 text-right">Estimasi Biaya BOM</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-[#f1f4f2]">
+                                        {prod.bom.map((b, idx) => {
+                                          const raw = inventory.find(
+                                            (r) =>
+                                              r.id === b.rawMaterialId ||
+                                              r.name.toLowerCase() === b.rawMaterialName.toLowerCase()
+                                          );
+                                          const unitCost = raw ? raw.costPerUnit : 0;
+                                          const subtotalCost = unitCost * b.quantity;
+
+                                          return (
+                                            <tr key={idx} className="hover:bg-[#fafbf9] transition-colors">
+                                              <td className="py-2 px-3 text-center text-slate-400 font-mono text-[10px]">
+                                                {idx + 1}
+                                              </td>
+                                              <td className="py-2 px-3 font-semibold text-slate-800">
+                                                {b.rawMaterialName}
+                                                {raw && (
+                                                  <span className="block text-[10px] text-slate-400 font-normal">
+                                                    Kategori: {raw.category}
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2 px-3 text-center">
+                                                <span className="inline-block rounded-md bg-[#eef4f0] border border-[#d6e3da] px-2 py-0.5 text-xs font-bold text-[#507160]">
+                                                  {b.quantity} {b.unit}
+                                                </span>
+                                              </td>
+                                              <td className="py-2 px-3 text-right text-slate-500 font-mono text-[11px]">
+                                                {formatCurrency(unitCost)} / {b.unit}
+                                              </td>
+                                              <td className="py-2 px-3 text-right font-bold text-slate-800 font-mono">
+                                                {formatCurrency(subtotalCost)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
                                   </div>
-                                  <div className="flex flex-wrap gap-1.5 pt-1">
-                                    {prod.bom && prod.bom.length > 0 ? (
-                                      prod.bom.map((b, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="inline-flex items-center rounded-lg bg-white border border-[#e5ece7] px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs"
-                                        >
-                                          <span className="font-semibold text-slate-800">
-                                            {b.rawMaterialName}
-                                          </span>
-                                          <span className="ml-1 text-[#507160] font-bold">
-                                            ({b.quantity} {b.unit})
-                                          </span>
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <p className="text-xs text-amber-600 italic">
-                                        Resep BOM belum dipetakan.
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
+                                ) : (
+                                  <p className="text-xs text-amber-600 italic p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                    Resep BOM belum dipetakan. Klik tombol Edit untuk menambahkan takaran bahan baku.
+                                  </p>
+                                )}
                               </div>
 
                               {/* SECTION 3: FOOTER ACTION */}
@@ -663,86 +611,6 @@ export const ProductManagement: React.FC = () => {
                     className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
                   />
                 </div>
-              </div>
-
-              {/* EQUIPMENT CONFIGURATION */}
-              <div className="space-y-3 pt-4 border-t border-[#e5ece7]">
-                <div className="flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-[#618873]" />
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Equipment / Peralatan yang Digunakan
-                  </h4>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Pilih dari peralatan standar barista/dapur atau ketik peralatan khusus di bawah ini:
-                </p>
-
-                {/* Quick Presets */}
-                <div className="flex flex-wrap gap-1.5">
-                  {COMMON_EQUIPMENT_PRESETS.map((preset) => {
-                    const isSelected = formEquipment.includes(preset);
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => handleTogglePreset(preset)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#618873] text-white shadow-2xs font-semibold'
-                            : 'bg-[#fafbf9] border border-[#e5ece7] text-slate-600 hover:bg-[#eef4f0]'
-                        }`}
-                      >
-                        {isSelected ? '✓ ' : '+ '}
-                        {preset}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Add Custom Equipment Input */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Tambah peralatan custom lainnya (contoh: Frother Baterai, Pisau Koki)..."
-                    value={newEquipmentInput}
-                    onChange={(e) => setNewEquipmentInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddEquipment();
-                      }
-                    }}
-                    className="flex-1 rounded-xl border border-[#e5ece7] px-3 py-1.5 text-xs focus:border-[#618873] focus:outline-hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddEquipment}
-                    className="rounded-xl border border-[#e5ece7] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#f4f7f5] cursor-pointer"
-                  >
-                    Tambah
-                  </button>
-                </div>
-
-                {/* Selected Equipment Badges */}
-                {formEquipment.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-[#fafbf9] border border-[#e5ece7]">
-                    {formEquipment.map((eq) => (
-                      <span
-                        key={eq}
-                        className="inline-flex items-center gap-1 rounded-md bg-white border border-[#d6e3da] px-2 py-0.5 text-xs font-medium text-slate-700 shadow-2xs"
-                      >
-                        <span>{eq}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEquipment(eq)}
-                          className="text-slate-400 hover:text-rose-500 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* BOM RECIPE BUILDER */}

@@ -47,6 +47,11 @@ import {
   SyncResult,
 } from '@/lib/supabase/syncService';
 import { translations, Language } from '@/lib/i18n/translations';
+import {
+  GlobalNotification,
+  AlertMessage,
+  ConfirmDialogOptions,
+} from '@/components/ui/GlobalNotification';
 
 interface AppContextType {
   user: User;
@@ -107,6 +112,9 @@ interface AppContextType {
   pushExpensesToSupabase: () => Promise<SyncResult>;
   pushIngredientsToSupabase: () => Promise<SyncResult>;
   resetToDemoData: () => void;
+
+  showAlert: (message: string, type?: 'success' | 'warning' | 'error' | 'info', title?: string) => void;
+  showConfirm: (options: ConfirmDialogOptions) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -146,6 +154,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error(e);
     }
   };
+
+  const [alerts, setAlerts] = useState<AlertMessage[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogOptions | null>(null);
+
+  const showAlert = useCallback(
+    (message: string, type: 'success' | 'warning' | 'error' | 'info' = 'success', title?: string) => {
+      const id = `alert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      setAlerts((prev) => [...prev, { id, type, title, message }]);
+      setTimeout(() => {
+        setAlerts((prev) => prev.filter((a) => a.id !== id));
+      }, 4200);
+    },
+    []
+  );
+
+  const showConfirm = useCallback((options: ConfirmDialogOptions) => {
+    setConfirmDialog(options);
+  }, []);
 
   // Live Query / Get Connection directly from Supabase
   const refreshFromSupabase = useCallback(async () => {
@@ -345,16 +371,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const productWithId: Product = { ...newProd, id };
     setProducts((prev) => [...prev, productWithId]);
     syncProductToSupabase(productWithId);
+    showAlert(
+      `Menu "${productWithId.name}" beserta resep BOM berhasil ditambahkan dan disinkronkan ke Supabase!`,
+      'success',
+      'Menu Baru Dibuat'
+    );
   };
 
   const updateProduct = (updated: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     syncProductToSupabase(updated);
+    showAlert(
+      `Perubahan menu "${updated.name}" dan resep BOM berhasil disimpan ke Supabase!`,
+      'success',
+      'Menu & Resep Diperbarui'
+    );
   };
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
     deleteProductFromSupabase(id);
+    showAlert(
+      'Menu item dan resep berhasil dihapus dari katalog ERP & Supabase.',
+      'info',
+      'Menu Dihapus'
+    );
   };
 
   // Inventory Updates & Additions
@@ -836,9 +877,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pushExpensesToSupabase,
         pushIngredientsToSupabase,
         resetToDemoData,
+        showAlert,
+        showConfirm,
       }}
     >
       {children}
+      <GlobalNotification
+        alerts={alerts}
+        onDismissAlert={(id) => setAlerts((prev) => prev.filter((a) => a.id !== id))}
+        confirmDialog={confirmDialog}
+        onCloseConfirm={() => setConfirmDialog(null)}
+      />
     </AppContext.Provider>
   );
 };
