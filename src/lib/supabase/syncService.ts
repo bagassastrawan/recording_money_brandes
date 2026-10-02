@@ -35,7 +35,7 @@ export interface SyncOrderResult {
 export async function syncIngredientToSupabase(item: InventoryItem): Promise<boolean> {
   if (!supabase) return false;
   try {
-    const { error } = await supabase.from('ingredients').upsert({
+    const payload: Record<string, unknown> = {
       id: item.id,
       outlet_id: item.outletId,
       name: item.name,
@@ -44,9 +44,16 @@ export async function syncIngredientToSupabase(item: InventoryItem): Promise<boo
       unit: item.unit,
       min_threshold: item.minThreshold,
       cost_per_unit: item.costPerUnit,
+      expiry_date: item.expiryDate || null,
       last_updated: item.lastUpdated || new Date().toISOString(),
-    });
+    };
+    const { error } = await supabase.from('ingredients').upsert(payload);
     if (error) {
+      if (error.message.includes('expiry_date')) {
+        delete payload.expiry_date;
+        await supabase.from('ingredients').upsert(payload);
+        return true;
+      }
       console.warn('Supabase sync ingredient error:', error.message);
       return false;
     }
@@ -303,7 +310,7 @@ export async function syncAllToSupabaseService(params: {
       if (prodErr) throw new Error(`Products sync error: ${prodErr.message}`);
     }
 
-    // 3. Sync Ingredients (All Outlets)
+    // 3. Sync Ingredients (All Outlets with Expiry Date)
     if (params.inventory.length > 0) {
       const ingredientPayload = params.inventory.map((inv) => ({
         id: inv.id,
@@ -314,15 +321,34 @@ export async function syncAllToSupabaseService(params: {
         unit: inv.unit,
         min_threshold: inv.minThreshold,
         cost_per_unit: inv.costPerUnit,
+        expiry_date: inv.expiryDate || null,
         last_updated: inv.lastUpdated || new Date().toISOString(),
       }));
       const { error: ingErr } = await supabase.from('ingredients').upsert(ingredientPayload);
       if (ingErr) {
-        if (ingErr.message.includes('uuid') || ingErr.message.includes('invalid input syntax')) {
+        if (ingErr.message.includes('expiry_date')) {
+          // Fallback without expiry_date
+          const fallback = ingredientPayload.map(({ expiry_date, ...rest }) => rest);
+          await supabase.from('ingredients').upsert(fallback);
+        } else if (ingErr.message.includes('uuid') || ingErr.message.includes('invalid input syntax')) {
           console.warn('Notice: Tabel ingredients masih bertipe UUID. Perlu update schema.');
         } else {
           console.warn(`Ingredients sync note: ${ingErr.message}`);
         }
+      }
+    }
+
+    // 3b. Sync Product BOM Recipes to product_ingredients
+    for (const prod of params.products) {
+      if (prod.bom && prod.bom.length > 0) {
+        const bomPayload = prod.bom.map((b) => ({
+          id: `bom-${prod.id}-${b.rawMaterialId}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+          product_id: prod.id,
+          ingredient_name: b.rawMaterialName,
+          quantity: b.quantity,
+          unit: b.unit,
+        }));
+        await supabase.from('product_ingredients').upsert(bomPayload);
       }
     }
 
@@ -689,6 +715,7 @@ export async function fetchIngredientsFromSupabase(): Promise<{
       unit: (row.unit as InventoryItem['unit']) || 'pack',
       minThreshold: Number(row.min_threshold ?? row.minThreshold ?? 0),
       costPerUnit: Number(row.cost_per_unit ?? row.costPerUnit ?? 0),
+      expiryDate: (row.expiry_date || row.expiryDate) ? String(row.expiry_date || row.expiryDate) : undefined,
       lastUpdated: String(row.last_updated || row.lastUpdated || new Date().toISOString()),
     }));
 

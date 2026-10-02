@@ -1,4 +1,4 @@
-import { Outlet, InventoryItem, Product, Order, OrderItem, Expense, StockOpnameRecord } from '@/types';
+import { Outlet, InventoryItem, Product, Order, OrderItem, Expense, StockOpnameRecord, StockMovementLog } from '@/types';
 
 export const initialOutlets: Outlet[] = [
   {
@@ -27,7 +27,33 @@ export const initialOutlets: Outlet[] = [
   },
 ];
 
-export const initialInventory: InventoryItem[] = [
+export const getExpiryDateForMaterial = (name: string, category: string, index: number = 0): string => {
+  const n = name.toLowerCase();
+  if (n.includes('milk') || n.includes('susu')) {
+    return index % 2 === 0 ? '2026-10-08' : '2026-10-12';
+  }
+  if (n.includes('brioche') || n.includes('toast')) {
+    return '2026-10-06';
+  }
+  if (n.includes('croissant')) {
+    return '2026-10-04';
+  }
+  if (n.includes('bean') || category === 'Coffee Beans') {
+    return '2026-12-20';
+  }
+  if (n.includes('matcha') || n.includes('syrup') || n.includes('sauce') || category === 'Syrup & Powder') {
+    return '2027-03-25';
+  }
+  if (category === 'Packaging' || n.includes('cup') || n.includes('lid')) {
+    return '2028-12-31';
+  }
+  if (n.includes('kentang') || n.includes('fries') || n.includes('beras')) {
+    return '2027-01-20';
+  }
+  return '2026-11-30';
+};
+
+const rawInventory: InventoryItem[] = [
   // OUTLET-1: BATANTA (FLAGSHIP)
   {
     id: 'raw-1',
@@ -607,6 +633,11 @@ export const initialInventory: InventoryItem[] = [
   },
 ];
 
+export const initialInventory: InventoryItem[] = rawInventory.map((item, idx) => ({
+  ...item,
+  expiryDate: item.expiryDate || getExpiryDateForMaterial(item.name, item.category, idx),
+}));
+
 export const initialProducts: Product[] = [
   // COFFEE
   {
@@ -616,6 +647,7 @@ export const initialProducts: Product[] = [
     price: 20000,
     description: 'Single-origin espresso murni dengan crema tebal dan aroma cocoa panggang.',
     isActive: true,
+    equipment: ['Mesin Espresso Komersial 2-Group', 'Grinder Espresso On-Demand', 'Tamper 58mm', 'Timbangan Digital Barista'],
     bom: [
       { rawMaterialId: 'raw-1', rawMaterialName: 'House Blend Coffee Beans', quantity: 18, unit: 'g' },
       { rawMaterialId: 'raw-4', rawMaterialName: 'Paper Hot Cups 12oz', quantity: 1, unit: 'pcs' },
@@ -628,6 +660,7 @@ export const initialProducts: Product[] = [
     price: 25000,
     description: 'Double espresso segar dituang di atas air mineral dingin dan es batu kristal.',
     isActive: true,
+    equipment: ['Mesin Espresso Komersial 2-Group', 'Grinder Espresso On-Demand', 'Ice Maker Machine', 'Sendok Es Stainless'],
     bom: [
       { rawMaterialId: 'raw-1', rawMaterialName: 'House Blend Coffee Beans', quantity: 20, unit: 'g' },
       { rawMaterialId: 'raw-5', rawMaterialName: 'Plastic Cold Cups 16oz', quantity: 1, unit: 'pcs' },
@@ -641,6 +674,7 @@ export const initialProducts: Product[] = [
     price: 28000,
     description: 'Espresso bold dipadu susu segar creamy dan lelehan gula aren organik khas Bali.',
     isActive: true,
+    equipment: ['Mesin Espresso Komersial 2-Group', 'Grinder Espresso On-Demand', 'Dispenser Pompa Gula Aren', 'Shaker Stainless Steel', 'Cup Sealer Machine'],
     bom: [
       { rawMaterialId: 'raw-1', rawMaterialName: 'House Blend Coffee Beans', quantity: 18, unit: 'g' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 160, unit: 'ml' },
@@ -656,6 +690,7 @@ export const initialProducts: Product[] = [
     price: 32000,
     description: 'Perpaduan seimbang espresso halus dan steamed milk berbusa lembut.',
     isActive: true,
+    equipment: ['Mesin Espresso Komersial 2-Group', 'Milk Steaming Pitcher 600ml', 'Thermometer Barista', 'Grinder Espresso'],
     bom: [
       { rawMaterialId: 'raw-1', rawMaterialName: 'House Blend Coffee Beans', quantity: 18, unit: 'g' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 200, unit: 'ml' },
@@ -670,6 +705,7 @@ export const initialProducts: Product[] = [
     price: 38000,
     description: 'Susu vanila lembut dilapisi espresso ganda dan saus karamel gurih melimpah.',
     isActive: true,
+    equipment: ['Mesin Espresso Komersial 2-Group', 'Milk Steaming Pitcher', 'Pompa Botol Sirup Karamel', 'Bar Spatula'],
     bom: [
       { rawMaterialId: 'raw-1', rawMaterialName: 'House Blend Coffee Beans', quantity: 20, unit: 'g' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 180, unit: 'ml' },
@@ -687,6 +723,7 @@ export const initialProducts: Product[] = [
     price: 35000,
     description: 'Bubuk matcha murni Uji Jepang yang dikocok dengan susu segar manis alami.',
     isActive: true,
+    equipment: ['Chasen (Bamboo Whisk) / Frother Elektrik', 'Mangkuk Chawan Matcha', 'Ice Maker Machine', 'Sendok Es Stainless'],
     bom: [
       { rawMaterialId: 'raw-8', rawMaterialName: 'Uji Matcha Powder', quantity: 12, unit: 'g' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 180, unit: 'ml' },
@@ -701,6 +738,7 @@ export const initialProducts: Product[] = [
     price: 34000,
     description: 'Cokelat hitam pekat dengan paduan susu hangat atau dingin yang legit.',
     isActive: true,
+    equipment: ['Milk Steaming Pitcher', 'Dispenser Saus Cokelat', 'Whisk Stainless Steel', 'Cup Sealer Machine'],
     bom: [
       { rawMaterialId: 'raw-9', rawMaterialName: 'Dark Chocolate Sauce', quantity: 30, unit: 'g' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 180, unit: 'ml' },
@@ -717,6 +755,7 @@ export const initialProducts: Product[] = [
     price: 38000,
     description: 'Nasi goreng bumbu rempah aromatik dengan suwiran ayam, telur mata sapi, dan kerupuk.',
     isActive: true,
+    equipment: ['Wok Burner High Pressure', 'Spatula Wok', 'Rice Warmer Komersial', 'Piring Saji Keramik'],
     bom: [
       { rawMaterialId: 'raw-10', rawMaterialName: 'Beras Basmati / Jasmine', quantity: 150, unit: 'g' },
     ],
@@ -728,6 +767,7 @@ export const initialProducts: Product[] = [
     price: 28000,
     description: 'Roti brioche tebal dipanggang renyah dengan selai srikaya wangi dan lelehan salted butter.',
     isActive: true,
+    equipment: ['Toaster Roti Komersial / Grill Pan', 'Pisau Roti Gerigi', 'Olesan Mentega (Butter Spreader)'],
     bom: [
       { rawMaterialId: 'raw-12', rawMaterialName: 'Roti Toast Brioche', quantity: 1, unit: 'pcs' },
     ],
@@ -741,6 +781,7 @@ export const initialProducts: Product[] = [
     price: 24000,
     description: 'Kentang goreng renyah bumbu sea salt gurih dengan saus sambal cocol.',
     isActive: true,
+    equipment: ['Deep Fryer Elektrik 10L', 'Keranjang Tiris Fryer', 'Food Warmer Heat Lamp', 'Wadah Bumbu Kentang'],
     bom: [
       { rawMaterialId: 'raw-11', rawMaterialName: 'Kentang Shoestring Beku', quantity: 180, unit: 'g' },
     ],
@@ -752,6 +793,7 @@ export const initialProducts: Product[] = [
     price: 26000,
     description: 'Pastry Perancis berlapis renyah dipanggang fresh setiap hari dengan mentega berkualitas.',
     isActive: true,
+    equipment: ['Oven Convection Bakery', 'Nampan Stainless Steel', 'Penjepit Roti (Tongs)', 'Kertas Roti Baking'],
     bom: [
       { rawMaterialId: 'raw-13', rawMaterialName: 'Croissant Butter Dough', quantity: 1, unit: 'pcs' },
     ],
@@ -765,6 +807,7 @@ export const initialProducts: Product[] = [
     price: 28000,
     description: 'Seduhan teh hitam Earl Grey beraroma citrus bergamot dengan susu segar creamy.',
     isActive: true,
+    equipment: ['Tea Steeping Pot & Infuser', 'Timer Seduh Digital', 'Milk Steaming Pitcher', 'Gelas Takar Ukur'],
     bom: [
       { rawMaterialId: 'raw-15', rawMaterialName: 'Earl Grey & Artisan Tea', quantity: 1, unit: 'pack' },
       { rawMaterialId: 'raw-2', rawMaterialName: 'Fresh Whole Milk', quantity: 150, unit: 'ml' },
@@ -779,6 +822,7 @@ export const initialProducts: Product[] = [
     price: 22000,
     description: 'Seduhan daun teh hijau melati harum disajikan dingin menyegarkan.',
     isActive: true,
+    equipment: ['Tea Brewing Infuser Jar', 'Ice Maker Machine', 'Gelas Shaker Bar', 'Saringan Teh Halus'],
     bom: [
       { rawMaterialId: 'raw-16', rawMaterialName: 'Jasmine Green Tea Leaves', quantity: 1, unit: 'pack' },
       { rawMaterialId: 'raw-5', rawMaterialName: 'Plastic Cold Cups 16oz', quantity: 1, unit: 'pcs' },
@@ -1165,5 +1209,128 @@ export const initialOpnames: StockOpnameRecord[] = [
         reason: 'Purge steam wand & sisa pitcher',
       },
     ],
+  },
+];
+
+export const initialStockMovements: StockMovementLog[] = [
+  {
+    id: 'mov-01',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    rawMaterialId: 'raw-1',
+    rawMaterialName: 'House Blend Coffee Beans',
+    type: 'restock',
+    changeQuantity: 15,
+    unit: 'pack',
+    stockAfter: 35,
+    referenceId: 'RESTOCK-BTN-101',
+    reason: 'Penerimaan restock biji kopi mingguan pada menu inventaris',
+    recordedBy: 'Alexandria Pratama (Manager)',
+    createdAt: '2026-10-02T08:15:00Z',
+  },
+  {
+    id: 'mov-02',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    rawMaterialId: 'raw-2',
+    rawMaterialName: 'Fresh Whole Milk',
+    type: 'restock',
+    changeQuantity: 24,
+    unit: 'btl',
+    stockAfter: 48,
+    referenceId: 'RESTOCK-BTN-102',
+    reason: 'Penerimaan susu segar harian dari supplier lokal',
+    recordedBy: 'Rina (Kasir)',
+    createdAt: '2026-10-02T07:30:00Z',
+  },
+  {
+    id: 'mov-03',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    rawMaterialId: 'raw-1',
+    rawMaterialName: 'House Blend Coffee Beans',
+    type: 'restock',
+    changeQuantity: 10,
+    unit: 'pack',
+    stockAfter: 25,
+    referenceId: 'PO-202610-01',
+    reason: 'Penerimaan barang dari Roastery Pusat pada menu inventaris',
+    recordedBy: 'Alexandria Pratama (Manager)',
+    createdAt: '2026-10-01T14:30:00Z',
+  },
+  {
+    id: 'mov-04',
+    outletId: 'outlet-2',
+    outletName: 'Taman Pancing',
+    rawMaterialId: 'raw-tpc-2',
+    rawMaterialName: 'Fresh Whole Milk (Pasteurized)',
+    type: 'waste',
+    changeQuantity: -1,
+    unit: 'dus',
+    stockAfter: 5,
+    referenceId: 'WST-20261001-01',
+    reason: 'Bahan kadaluwarsa & kemasan bocor dicatat pada menu inventaris',
+    recordedBy: 'Surya (Kasir)',
+    createdAt: '2026-10-01T10:00:00Z',
+  },
+  {
+    id: 'mov-05',
+    outletId: 'outlet-3',
+    outletName: 'Dewi Sri',
+    rawMaterialId: 'raw-dws-3',
+    rawMaterialName: 'Liquid Palm Sugar (Gula Aren Asli)',
+    type: 'transfer',
+    changeQuantity: 3,
+    unit: 'btl',
+    stockAfter: 8,
+    referenceId: 'TRF-BTN-DWS-08',
+    reason: 'Transfer stok masuk dari Batanta ke Dewi Sri pada menu inventaris',
+    recordedBy: 'Budi (Kasir)',
+    createdAt: '2026-09-30T16:20:00Z',
+  },
+  {
+    id: 'mov-06',
+    outletId: 'outlet-1',
+    outletName: 'Batanta',
+    rawMaterialId: 'raw-1',
+    rawMaterialName: 'House Blend Coffee Beans',
+    type: 'opname_adjustment',
+    changeQuantity: -2,
+    unit: 'pack',
+    stockAfter: 18,
+    referenceId: 'OPNAME-BTN-01',
+    reason: 'Penyesuaian audit opname fisik mingguan pada menu inventaris',
+    recordedBy: 'Rina (Kasir)',
+    createdAt: '2026-09-25T21:00:00Z',
+  },
+  {
+    id: 'mov-07',
+    outletId: 'outlet-2',
+    outletName: 'Taman Pancing',
+    rawMaterialId: 'raw-tpc-5',
+    rawMaterialName: 'Plastic Cold Cups 16oz',
+    type: 'restock',
+    changeQuantity: 500,
+    unit: 'cup',
+    stockAfter: 680,
+    referenceId: 'PO-202609-88',
+    reason: 'Restock mingguan kemasan cup sablon pada menu inventaris',
+    recordedBy: 'Alexandria Pratama (Manager)',
+    createdAt: '2026-09-27T11:00:00Z',
+  },
+  {
+    id: 'mov-08',
+    outletId: 'outlet-3',
+    outletName: 'Dewi Sri',
+    rawMaterialId: 'raw-dws-1',
+    rawMaterialName: 'House Blend Coffee Beans',
+    type: 'opname_adjustment',
+    changeQuantity: 1,
+    unit: 'pack',
+    stockAfter: 12,
+    referenceId: 'OPNAME-DWS-03',
+    reason: 'Koreksi selisih hitung fisik stok opname pada menu inventaris',
+    recordedBy: 'Budi (Kasir)',
+    createdAt: '2026-09-28T20:00:00Z',
   },
 ];

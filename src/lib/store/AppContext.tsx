@@ -11,6 +11,7 @@ import {
   CartItem,
   Expense,
   StockDepletionLog,
+  StockMovementLog,
   StockOpnameRecord,
   PaymentMethod,
 } from '@/types';
@@ -21,6 +22,7 @@ import {
   initialOrders,
   initialExpenses,
   initialOpnames,
+  initialStockMovements,
   DEFAULT_ORDER_ITEMS_MAP,
 } from '@/lib/data/mockData';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
@@ -77,6 +79,9 @@ interface AppContextType {
   }) => { order: Order; depletedLogs: StockDepletionLog[] } | null;
   
   stockDepletionLogs: StockDepletionLog[];
+  stockMovements: StockMovementLog[];
+  addStockMovement: (mov: Omit<StockMovementLog, 'id' | 'createdAt'>) => void;
+  recordStockWaste: (params: { outletId: string; rawMaterialId: string; quantity: number; reason: string }) => void;
   
   expenses: Expense[];
   addExpense: (expense: Omit<Expense, 'id'>) => void;
@@ -127,6 +132,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
   const [stockOpnames, setStockOpnames] = useState<StockOpnameRecord[]>(initialOpnames);
   const [stockDepletionLogs, setStockDepletionLogs] = useState<StockDepletionLog[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovementLog[]>(initialStockMovements);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isLoadingLiveSupabase, setIsLoadingLiveSupabase] = useState<boolean>(false);
 
@@ -164,7 +170,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setInventory(ingRes.data);
       }
       if (expRes.success && expRes.data && expRes.data.length > 0) {
-        setExpenses(expRes.data);
+        setExpenses((prevExpenses) => {
+          const expenseMap = new Map<string, Expense>();
+          // Preserve local/session expenses
+          prevExpenses.forEach((e) => expenseMap.set(e.id, e));
+          // Merge persistent Supabase expenses
+          expRes.data!.forEach((e) => expenseMap.set(e.id, e));
+          return Array.from(expenseMap.values()).sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+          );
+        });
       }
       if (ordRes.success && ordRes.data && ordRes.data.length > 0) {
         setOrders((prevOrders) => {
@@ -376,9 +391,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateInventoryStock = (id: string, outletId: string, currentStock: number, costPerUnit?: number) => {
     let updatedItem: InventoryItem | undefined;
+    let oldStock = 0;
     setInventory((prev) =>
       prev.map((item) => {
         if (item.id === id && item.outletId === outletId) {
+          oldStock = item.currentStock;
           updatedItem = {
             ...item,
             currentStock,
@@ -392,6 +409,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (updatedItem) {
       syncIngredientToSupabase(updatedItem);
+      if (oldStock !== currentStock) {
+        const targetOutlet = outlets.find((o) => o.id === outletId);
+        const diff = currentStock - oldStock;
+        const mov: StockMovementLog = {
+          id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          outletId,
+          outletName: targetOutlet?.name || currentOutlet?.name || outletId,
+          rawMaterialId: id,
+          rawMaterialName: updatedItem.name,
+          type: 'opname_adjustment',
+          changeQuantity: diff,
+          unit: updatedItem.unit,
+          stockAfter: currentStock,
+          referenceId: `ADJ-${Date.now().toString().slice(-6)}`,
+          reason: `Penyesuaian stok langsung pada menu inventaris (${diff > 0 ? `+${diff}` : diff} ${updatedItem.unit})`,
+          recordedBy: `${user.name} (${user.role === 'manager' ? 'Manager' : 'Kasir'})`,
+          createdAt: new Date().toISOString(),
+        };
+        setStockMovements((prev) => [mov, ...prev]);
+      }
     }
   };
 
@@ -413,6 +450,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (updatedItem) {
       syncIngredientToSupabase(updatedItem);
+      
+      const targetOutlet = outlets.find((o) => o.id === outletId);
+      const restockMov: StockMovementLog = {
+        id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        outletId,
+        outletName: targetOutlet?.name || currentOutlet?.name || outletId,
+        rawMaterialId: id,
+        rawMaterialName: updatedItem.name,
+        type: 'restock',
+        changeQuantity: addQuantity,
+        unit: updatedItem.unit,
+        stockAfter: updatedItem.currentStock,
+        referenceId: `RESTOCK-${Date.now().toString().slice(-6)}`,
+        reason: `Penerimaan Restock (+${addQuantity} ${updatedItem.unit}) pada menu inventaris`,
+        recordedBy: `${user.name} (${user.role === 'manager' ? 'Manager' : 'Kasir'})`,
+        createdAt: new Date().toISOString(),
+      };
+      setStockMovements((prev) => [restockMov, ...prev]);
     }
 
     // Also auto-record restock as raw material purchase expense if cost is supplied
@@ -433,6 +488,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     }
+  };
+
+  const addStockMovement = (mov: Omit<StockMovementLog, 'id' | 'createdAt'>) => {
+    const newMov: StockMovementLog = {
+      ...mov,
+      id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+    setStockMovements((prev) => [newMov, ...prev]);
+  };
+
+  const recordStockWaste = ({
+    outletId,
+    rawMaterialId,
+    quantity,
+    reason,
+  }: {
+    outletId: string;
+    rawMaterialId: string;
+    quantity: number;
+    reason: string;
+  }) => {
+    const item = inventory.find((i) => i.id === rawMaterialId && i.outletId === outletId);
+    const targetOutlet = outlets.find((o) => o.id === outletId);
+    if (!item) return;
+
+    const newStock = Math.max(0, item.currentStock - quantity);
+    updateInventoryStock(item.id, outletId, newStock);
+
+    const wasteMov: StockMovementLog = {
+      id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      outletId,
+      outletName: targetOutlet?.name || outletId,
+      rawMaterialId,
+      rawMaterialName: item.name,
+      type: 'waste',
+      changeQuantity: -quantity,
+      unit: item.unit,
+      stockAfter: newStock,
+      referenceId: `WST-${Date.now().toString().slice(-6)}`,
+      reason: reason || 'Bahan rusak / kadaluwarsa pada menu inventaris',
+      recordedBy: `${user.name} (${user.role === 'manager' ? 'Manager' : 'Kasir'})`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setStockMovements((prev) => [wasteMov, ...prev]);
   };
 
   // ========================================================
@@ -616,6 +717,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
+    // Record opname adjustments into stockMovements
+    const opnameMovements: StockMovementLog[] = record.items
+      .filter((it) => it.variance !== 0)
+      .map((it) => ({
+        id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        outletId: record.outletId,
+        outletName: record.outletName,
+        rawMaterialId: it.rawMaterialId,
+        rawMaterialName: it.rawMaterialName,
+        type: 'opname_adjustment' as const,
+        changeQuantity: it.variance,
+        unit: it.unit,
+        stockAfter: it.physicalStock,
+        referenceId: newRecord.id,
+        reason: `Penyesuaian Opname Fisik: ${it.reason || 'Koreksi selisih hitung fisik'}`,
+        recordedBy: `${record.performedBy || user.name} (${user.role === 'manager' ? 'Manager' : 'Kasir'})`,
+        createdAt: new Date().toISOString(),
+      }));
+    if (opnameMovements.length > 0) {
+      setStockMovements((prev) => [...opnameMovements, ...prev]);
+    }
+
     setStockOpnames((prev) => [newRecord, ...prev]);
     syncStockOpnameToSupabase(newRecord);
   };
@@ -663,6 +786,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setExpenses(initialExpenses);
     setStockOpnames(initialOpnames);
     setStockDepletionLogs([]);
+    setStockMovements(initialStockMovements);
     localStorage.removeItem(LOCAL_STORAGE_KEY);
   };
 
@@ -689,6 +813,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orders,
         createOrder,
         stockDepletionLogs,
+        stockMovements,
+        addStockMovement,
+        recordStockWaste,
         expenses,
         addExpense,
         deleteExpense,

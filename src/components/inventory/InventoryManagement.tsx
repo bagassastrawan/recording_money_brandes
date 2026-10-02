@@ -26,6 +26,7 @@ export const InventoryManagement: React.FC = () => {
     restockItem,
     addInventoryItem,
     updateInventoryItem,
+    updateInventoryStock,
     stockOpnames,
     submitStockOpname,
     user,
@@ -61,6 +62,7 @@ export const InventoryManagement: React.FC = () => {
   const [newItemUnit, setNewItemUnit] = useState<InventoryItem['unit']>('pack');
   const [newItemMinThreshold, setNewItemMinThreshold] = useState<number>(3);
   const [newItemCostPerUnit, setNewItemCostPerUnit] = useState<number>(150000);
+  const [newItemExpiryDate, setNewItemExpiryDate] = useState<string>('2026-12-31');
   const [syncAlert, setSyncAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Edit Item Modal (Manager Only)
@@ -71,6 +73,7 @@ export const InventoryManagement: React.FC = () => {
   const [editUnit, setEditUnit] = useState<InventoryItem['unit']>('pack');
   const [editMinThreshold, setEditMinThreshold] = useState<number>(3);
   const [editCostPerUnit, setEditCostPerUnit] = useState<number>(150000);
+  const [editExpiryDate, setEditExpiryDate] = useState<string>('');
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
@@ -79,6 +82,7 @@ export const InventoryManagement: React.FC = () => {
     setEditUnit(item.unit);
     setEditMinThreshold(item.minThreshold);
     setEditCostPerUnit(item.costPerUnit);
+    setEditExpiryDate(item.expiryDate || '');
     setIsEditModalOpen(true);
   };
 
@@ -87,7 +91,7 @@ export const InventoryManagement: React.FC = () => {
     if (!editingItem || !editName.trim()) return;
 
     const targetOutlet = outlets.find((o) => o.id === editingItem.outletId);
-    const confirmMsg = `Konfirmasi Pembaruan Data Bahan Baku:\n\nNama Lama: ${editingItem.name}\nNama Baru: ${editName.trim()}\nCabang: ${targetOutlet?.name || editingItem.outletId}\nKategori: ${editCategory}\nSatuan: ${editUnit}\nBatas Minimum: ${editMinThreshold} ${editUnit}\nHarga Beli: Rp ${Number(editCostPerUnit).toLocaleString('id-ID')}\n\nApakah Anda yakin ingin menyimpan perubahan data barang ini?`;
+    const confirmMsg = `Konfirmasi Pembaruan Data Bahan Baku:\n\nNama Lama: ${editingItem.name}\nNama Baru: ${editName.trim()}\nCabang: ${targetOutlet?.name || editingItem.outletId}\nKategori: ${editCategory}\nSatuan: ${editUnit}\nBatas Minimum: ${editMinThreshold} ${editUnit}\nHarga Beli: Rp ${Number(editCostPerUnit).toLocaleString('id-ID')}\nKadaluwarsa: ${editExpiryDate || 'Tidak diset'}\n\nApakah Anda yakin ingin menyimpan perubahan data barang ini?`;
     if (!window.confirm(confirmMsg)) return;
 
     const updatedItemData: InventoryItem = {
@@ -97,6 +101,7 @@ export const InventoryManagement: React.FC = () => {
       unit: editUnit,
       minThreshold: Number(editMinThreshold),
       costPerUnit: Number(editCostPerUnit),
+      expiryDate: editExpiryDate || undefined,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -120,7 +125,7 @@ export const InventoryManagement: React.FC = () => {
     if (!newItemName.trim()) return;
 
     const targetOutlet = outlets.find((o) => o.id === newItemOutletId);
-    const confirmMsg = `Konfirmasi Penambahan Bahan Baku Baru:\n\nNama: ${newItemName.trim()}\nCabang: ${targetOutlet?.name || newItemOutletId}\nStok Awal: ${newItemStock} ${newItemUnit}\nBatas Minimum: ${newItemMinThreshold} ${newItemUnit}\nHarga Beli: Rp ${Number(newItemCostPerUnit).toLocaleString('id-ID')}\n\nApakah Anda yakin ingin menambahkan bahan baku ini?`;
+    const confirmMsg = `Konfirmasi Penambahan Bahan Baku Baru:\n\nNama: ${newItemName.trim()}\nCabang: ${targetOutlet?.name || newItemOutletId}\nStok Awal: ${newItemStock} ${newItemUnit}\nBatas Minimum: ${newItemMinThreshold} ${newItemUnit}\nHarga Beli: Rp ${Number(newItemCostPerUnit).toLocaleString('id-ID')}\nKadaluwarsa: ${newItemExpiryDate || 'Tidak diset'}\n\nApakah Anda yakin ingin menambahkan bahan baku ini?`;
     if (!window.confirm(confirmMsg)) return;
 
     addInventoryItem({
@@ -131,6 +136,7 @@ export const InventoryManagement: React.FC = () => {
       unit: newItemUnit,
       minThreshold: Number(newItemMinThreshold),
       costPerUnit: Number(newItemCostPerUnit),
+      expiryDate: newItemExpiryDate || undefined,
     });
 
     setIsAddModalOpen(false);
@@ -138,6 +144,7 @@ export const InventoryManagement: React.FC = () => {
     setNewItemStock(10);
     setNewItemMinThreshold(3);
     setNewItemCostPerUnit(150000);
+    setNewItemExpiryDate('2026-12-31');
     setSyncAlert({
       type: 'success',
       message: `Bahan baku "${newItemName.trim()}" (${newItemStock} ${newItemUnit}) berhasil ditambahkan ke cabang ${targetOutlet?.name || newItemOutletId}!`,
@@ -194,51 +201,106 @@ export const InventoryManagement: React.FC = () => {
     }));
   };
 
-  // Submit Opname Audit
-  const handleSubmitOpname = (e: React.FormEvent) => {
-    e.preventDefault();
-    const targetOutlet = outlets.find((o) => o.id === opnameOutletId);
+  // Single row Perubahan Stok action
+  const handleApplySingleStockChange = (inv: InventoryItem) => {
+    const physical =
+      opnameCounts[inv.id]?.count !== undefined
+        ? opnameCounts[inv.id].count
+        : inv.currentStock;
+    const reason = opnameCounts[inv.id]?.reason || 'Pembaruan stok di menu weekly stock';
 
-    const items: StockOpnameItem[] = opnameOutletItems.map((inv) => {
-      const physical =
-        opnameCounts[inv.id]?.count !== undefined
-          ? opnameCounts[inv.id].count
-          : inv.currentStock;
-      const variance = physical - inv.currentStock;
-      const varianceCost = variance * inv.costPerUnit;
+    if (physical === inv.currentStock) {
+      alert(`Stok fisik (${physical} ${inv.unit}) sama dengan stok sistem saat ini. Ubah angka stok fisik jika ingin menerapkan perubahan stok.`);
+      return;
+    }
 
-      return {
-        rawMaterialId: inv.id,
-        rawMaterialName: inv.name,
-        unit: inv.unit,
-        systemStock: inv.currentStock,
-        physicalStock: physical,
-        variance,
-        costPerUnit: inv.costPerUnit,
-        varianceCost,
-        reason: opnameCounts[inv.id]?.reason || (variance < 0 ? 'Normal consumption / spillage' : ''),
-      };
-    });
-
-    const totalVarianceCost = items.reduce((sum, item) => sum + item.varianceCost, 0);
-
-    const confirmMsg = `Konfirmasi Penyesuaian Stok Opname:\n\nCabang: ${targetOutlet?.name}\nTotal Bahan Diaudit: ${items.length} item\nPetugas Audit: ${opnameEmployee}\n\nStok sistem akan disesuaikan dengan hitungan fisik. Lanjutkan pembaruan stok?`;
+    const diff = physical - inv.currentStock;
+    const confirmMsg = `Konfirmasi Perubahan Stok:\n\nBahan: ${inv.name}\nCabang: ${outlets.find((o) => o.id === inv.outletId)?.name || inv.outletId}\nStok Sistem Semula: ${inv.currentStock} ${inv.unit}\nStok Fisik Baru: ${physical} ${inv.unit} (${diff > 0 ? `+${diff}` : diff} ${inv.unit})\nAlasan: ${reason}\n\nApakah Anda yakin ingin menerapkan perubahan stok ini?`;
     if (!window.confirm(confirmMsg)) return;
 
+    // 1. Update actual inventory stock in state & Supabase
+    updateInventoryStock(inv.id, inv.outletId, physical);
+
+    // 2. Submit into stockOpnames for Opname History tracking
     submitStockOpname({
-      outletId: opnameOutletId,
-      outletName: targetOutlet?.name || 'Cabang',
-      performedBy: opnameEmployee,
+      outletId: inv.outletId,
+      outletName: outlets.find((o) => o.id === inv.outletId)?.name || 'Cabang',
+      performedBy: opnameEmployee || `${user.name} (${isManager ? 'Manager' : 'Kasir'})`,
       date: new Date().toISOString().split('T')[0],
-      items,
-      totalVarianceCost,
-      notes: opnameNotes,
+      items: [
+        {
+          rawMaterialId: inv.id,
+          rawMaterialName: inv.name,
+          unit: inv.unit,
+          systemStock: inv.currentStock,
+          physicalStock: physical,
+          variance: diff,
+          costPerUnit: inv.costPerUnit,
+          varianceCost: 0,
+          reason,
+        },
+      ],
+      totalVarianceCost: 0,
+      notes: reason,
       status: 'approved',
     });
 
     setSyncAlert({
       type: 'success',
-      message: `Audit Stok Opname Berhasil: Stok ${items.length} bahan baku di cabang ${targetOutlet?.name} telah diselaraskan dengan hitungan fisik riil!`,
+      message: `Perubahan Stok Berhasil: Stok "${inv.name}" kini ${physical} ${inv.unit} (${diff > 0 ? `+${diff}` : diff}). Perubahan tercatat di Opname History.`,
+    });
+    setTimeout(() => setSyncAlert(null), 5000);
+  };
+
+  // Submit Opname Audit (Batch for all modified items)
+  const handleSubmitOpname = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetOutlet = outlets.find((o) => o.id === opnameOutletId);
+
+    const changedItems: StockOpnameItem[] = opnameOutletItems
+      .map((inv) => {
+        const physical =
+          opnameCounts[inv.id]?.count !== undefined
+            ? opnameCounts[inv.id].count
+            : inv.currentStock;
+        const diff = physical - inv.currentStock;
+
+        return {
+          rawMaterialId: inv.id,
+          rawMaterialName: inv.name,
+          unit: inv.unit,
+          systemStock: inv.currentStock,
+          physicalStock: physical,
+          variance: diff,
+          costPerUnit: inv.costPerUnit,
+          varianceCost: 0,
+          reason: opnameCounts[inv.id]?.reason || (diff !== 0 ? 'Pembaruan fisik di weekly stock' : ''),
+        };
+      })
+      .filter((it) => it.variance !== 0);
+
+    if (changedItems.length === 0) {
+      alert('Tidak ada perubahan stok fisik yang dimasukkan. Silakan sesuaikan jumlah stok fisik pada bahan yang ingin diubah.');
+      return;
+    }
+
+    const confirmMsg = `Konfirmasi Perubahan Stok Weekly Opname:\n\nCabang: ${targetOutlet?.name}\nTotal Bahan Berubah: ${changedItems.length} item\nPetugas: ${opnameEmployee}\n\nLanjutkan pembaruan stok ke sistem dan pencatatan riwayat?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    submitStockOpname({
+      outletId: opnameOutletId,
+      outletName: targetOutlet?.name || 'Cabang',
+      performedBy: opnameEmployee || `${user.name} (${isManager ? 'Manager' : 'Kasir'})`,
+      date: new Date().toISOString().split('T')[0],
+      items: changedItems,
+      totalVarianceCost: 0,
+      notes: opnameNotes || 'Pembaruan stok berkala dari menu weekly stock',
+      status: 'approved',
+    });
+
+    setSyncAlert({
+      type: 'success',
+      message: `Perubahan Stok Berhasil: ${changedItems.length} bahan baku telah disesuaikan dan dicatat di Opname History!`,
     });
     setActiveSubTab('history');
     setTimeout(() => setSyncAlert(null), 6000);
@@ -454,18 +516,53 @@ export const InventoryManagement: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-[#e5ece7] bg-[#fafbf9] text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                    <th className="py-3.5 px-4">Raw Material / Bahan</th>
-                    <th className="py-3.5 px-4">Category</th>
-                    <th className="py-3.5 px-4">Current Stock</th>
-                    <th className="py-3.5 px-4">Min. Threshold</th>
+                    <th className="py-3.5 px-4">Material / Bahan</th>
+                    <th className="py-3.5 px-4">Categori</th>
+                    <th className="py-3.5 px-4">Stock</th>
                     <th className="py-3.5 px-4">Unit Cost</th>
-                    <th className="py-3.5 px-4">Stock Health Status</th>
+                    <th className="py-3.5 px-4">Tanggal Kadaluwarsa</th>
                     <th className="py-3.5 px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f1f4f2]">
                   {filteredItems.map((item) => {
                     const isLowStock = item.currentStock <= item.minThreshold;
+
+                    // Calculate expiry countdown
+                    const getExpiryMeta = (expiryDate?: string) => {
+                      if (!expiryDate) {
+                        return {
+                          displayDate: 'Tidak ditentukan',
+                          badge: 'Tanpa Tgl',
+                          style: 'bg-slate-100 text-slate-500 border-slate-200',
+                        };
+                      }
+                      const today = new Date('2026-10-02');
+                      const exp = new Date(expiryDate);
+                      const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                      if (diffDays < 0) {
+                        return {
+                          displayDate: formatDate(expiryDate),
+                          badge: `Expired (${Math.abs(diffDays)}h lalu)`,
+                          style: 'bg-rose-100 text-rose-800 border-rose-300 font-bold',
+                        };
+                      }
+                      if (diffDays <= 7) {
+                        return {
+                          displayDate: formatDate(expiryDate),
+                          badge: `Mendekati (${diffDays}h lagi)`,
+                          style: 'bg-amber-100 text-amber-800 border-amber-300 font-bold animate-pulse',
+                        };
+                      }
+                      return {
+                        displayDate: formatDate(expiryDate),
+                        badge: `Aman (${diffDays}h lagi)`,
+                        style: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-medium',
+                      };
+                    };
+
+                    const expMeta = getExpiryMeta(item.expiryDate);
 
                     return (
                       <tr
@@ -474,55 +571,62 @@ export const InventoryManagement: React.FC = () => {
                           isLowStock ? 'bg-rose-50/50 hover:bg-rose-50/80' : 'hover:bg-[#fafbf9]'
                         }`}
                       >
-                        {/* Name */}
-                        <td className="py-3.5 px-4 font-bold text-slate-800">
-                          {item.name}
+                        {/* 1. Material / Bahan */}
+                        <td className="py-3.5 px-4">
+                          <div>
+                            <p className="font-bold text-slate-800 text-sm">{item.name}</p>
+                          </div>
                         </td>
 
-                        {/* Category */}
+                        {/* 2. Categori */}
                         <td className="py-3.5 px-4">
                           <span className="inline-block rounded-md bg-[#fafbf9] border border-[#e5ece7] px-2 py-0.5 text-[11px] font-medium text-slate-600">
                             {item.category}
                           </span>
                         </td>
 
-                        {/* Current Stock */}
+                        {/* 3. Stock */}
                         <td className="py-3.5 px-4">
-                          <span
-                            className={`font-extrabold text-sm ${
-                              isLowStock ? 'text-rose-600' : 'text-slate-800'
-                            }`}
-                          >
-                            {item.currentStock.toLocaleString()} {item.unit}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-extrabold text-sm ${
+                                isLowStock ? 'text-rose-600' : 'text-slate-800'
+                              }`}
+                            >
+                              {item.currentStock.toLocaleString()} {item.unit}
+                            </span>
+                            {isLowStock ? (
+                              <span className="rounded bg-rose-100 border border-rose-300 text-[10px] font-bold text-rose-700 px-1.5 py-0.5 animate-pulse">
+                                Min: {item.minThreshold}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">
+                                (Min: {item.minThreshold} {item.unit})
+                              </span>
+                            )}
+                          </div>
                         </td>
 
-                        {/* Min Threshold */}
-                        <td className="py-3.5 px-4 text-slate-500 font-medium">
-                          {item.minThreshold.toLocaleString()} {item.unit}
-                        </td>
-
-                        {/* Cost */}
+                        {/* 4. Unit Cost */}
                         <td className="py-3.5 px-4 font-semibold text-slate-700">
-                          {formatCurrency(item.costPerUnit)} / {item.unit}
+                          {formatCurrency(item.costPerUnit)} <span className="text-[10px] text-slate-400 font-normal">/ {item.unit}</span>
                         </td>
 
-                        {/* Status (Highlighted in RED if low) */}
+                        {/* 5. Tanggal Kadaluwarsa */}
                         <td className="py-3.5 px-4">
-                          {isLowStock ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 border border-rose-300 px-3 py-1 text-xs font-bold text-rose-700 animate-pulse">
-                              <FiAlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-                              LOW STOCK
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-slate-800 text-xs">
+                              {expMeta.displayDate}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef4f0] border border-[#d6e3da] px-3 py-1 text-xs font-semibold text-[#507160]">
-                              <FiCheckCircle className="h-3.5 w-3.5 text-[#618873]" />
-                              Optimal Level
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] border w-fit ${expMeta.style}`}
+                            >
+                              {expMeta.badge}
                             </span>
-                          )}
+                          </div>
                         </td>
 
-                        {/* Action Buttons */}
+                        {/* 6. Action */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             {isManager && (
@@ -530,7 +634,7 @@ export const InventoryManagement: React.FC = () => {
                                 type="button"
                                 onClick={() => handleOpenEditModal(item)}
                                 className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                                title="Edit nama & data bahan baku"
+                                title="Edit nama, kategori, unit & tanggal kadaluwarsa"
                               >
                                 <FiEdit2 className="h-3.5 w-3.5 text-slate-500" />
                                 <span>Edit</span>
@@ -619,17 +723,16 @@ export const InventoryManagement: React.FC = () => {
               </div>
             </div>
 
-            {/* Opname Table */}
+            {/* Opname Table (Variance and Variance Cost Deleted, Action Perubahan Stok Added) */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-[#e5ece7] text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-3">Raw Material</th>
-                    <th className="py-3 px-3">System Stock (Recorded)</th>
-                    <th className="py-3 px-3">Physical Count (Actual)</th>
-                    <th className="py-3 px-3">Variance</th>
-                    <th className="py-3 px-3">Variance Cost</th>
-                    <th className="py-3 px-3">Audit Reason / Notes</th>
+                  <tr className="border-b border-[#e5ece7] text-slate-500 font-bold uppercase tracking-wider text-[11px] bg-[#fafbf9]">
+                    <th className="py-3 px-3">Bahan Baku (Raw Material)</th>
+                    <th className="py-3 px-3">Stok Sistem Saat Ini</th>
+                    <th className="py-3 px-3">Stok Fisik Baru (Hasil Hitung)</th>
+                    <th className="py-3 px-3">Alasan / Catatan Perubahan</th>
+                    <th className="py-3 px-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f1f4f2]">
@@ -638,11 +741,10 @@ export const InventoryManagement: React.FC = () => {
                       opnameCounts[inv.id]?.count !== undefined
                         ? opnameCounts[inv.id].count
                         : inv.currentStock;
-                    const variance = physical - inv.currentStock;
-                    const varianceCost = variance * inv.costPerUnit;
+                    const isChanged = physical !== inv.currentStock;
 
                     return (
-                      <tr key={inv.id} className="hover:bg-[#fafbf9]">
+                      <tr key={inv.id} className={`transition-colors ${isChanged ? 'bg-amber-50/40' : 'hover:bg-[#fafbf9]'}`}>
                         <td className="py-3 px-3 font-bold text-slate-800">
                           {inv.name}
                           <span className="block text-[10px] text-slate-400 font-normal">
@@ -650,8 +752,10 @@ export const InventoryManagement: React.FC = () => {
                           </span>
                         </td>
 
-                        <td className="py-3 px-3 font-semibold text-slate-600">
-                          {inv.currentStock.toLocaleString()} {inv.unit}
+                        <td className="py-3 px-3 font-semibold text-slate-700">
+                          <span className="inline-block rounded-md bg-[#f4f7f5] px-2 py-0.5 border border-[#e5ece7]">
+                            {inv.currentStock.toLocaleString()} {inv.unit}
+                          </span>
                         </td>
 
                         {/* Physical Count Input */}
@@ -665,51 +769,42 @@ export const InventoryManagement: React.FC = () => {
                               onChange={(e) =>
                                 handleOpnameCountChange(inv.id, Number(e.target.value))
                               }
-                              className="w-28 rounded-lg border border-[#e5ece7] bg-white px-2.5 py-1 text-right text-xs font-bold text-slate-800 focus:border-[#618873] focus:outline-hidden"
+                              className={`w-28 rounded-lg border px-2.5 py-1 text-right text-xs font-bold focus:outline-hidden ${
+                                isChanged
+                                  ? 'border-[#618873] bg-emerald-50/50 text-[#507160]'
+                                  : 'border-[#e5ece7] bg-white text-slate-800 focus:border-[#618873]'
+                              }`}
                             />
                             <span className="text-slate-400 text-[11px]">{inv.unit}</span>
                           </div>
                         </td>
 
-                        {/* Variance */}
-                        <td className="py-3 px-3">
-                          <span
-                            className={`font-extrabold ${
-                              variance < 0
-                                ? 'text-rose-600'
-                                : variance > 0
-                                ? 'text-emerald-600'
-                                : 'text-slate-500'
-                            }`}
-                          >
-                            {variance > 0 ? `+${variance}` : variance} {inv.unit}
-                          </span>
-                        </td>
-
-                        {/* Variance Cost */}
-                        <td className="py-3 px-3 font-semibold">
-                          <span
-                            className={
-                              varianceCost < 0
-                                ? 'text-rose-600'
-                                : varianceCost > 0
-                                ? 'text-emerald-600'
-                                : 'text-slate-500'
-                            }
-                          >
-                            {formatCurrency(varianceCost)}
-                          </span>
-                        </td>
-
-                        {/* Reason */}
+                        {/* Reason / Notes */}
                         <td className="py-3 px-3">
                           <input
                             type="text"
-                            placeholder="e.g. Grinder calibration, cup drop..."
+                            placeholder="Alasan perubahan stok (misal: kalibrasi grinder, tumpah, selisih hitung)..."
                             value={opnameCounts[inv.id]?.reason || ''}
                             onChange={(e) => handleOpnameReasonChange(inv.id, e.target.value)}
-                            className="w-full rounded-lg border border-[#e5ece7] bg-white px-2 py-1 text-[11px] text-slate-600 placeholder-slate-400 focus:border-[#618873] focus:outline-hidden"
+                            className="w-full rounded-lg border border-[#e5ece7] bg-white px-2.5 py-1 text-[11px] text-slate-700 placeholder-slate-400 focus:border-[#618873] focus:outline-hidden"
                           />
+                        </td>
+
+                        {/* Action Column: Perubahan Stok */}
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleApplySingleStockChange(inv)}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all shadow-2xs cursor-pointer whitespace-nowrap mx-auto ${
+                              isChanged
+                                ? 'bg-[#618873] hover:bg-[#507160] text-white animate-pulse'
+                                : 'bg-[#f4f7f5] hover:bg-[#e5ece7] text-slate-600 border border-[#e5ece7]'
+                            }`}
+                            title="Terapkan perubahan stok untuk bahan ini"
+                          >
+                            <FiCheckCircle className="h-3.5 w-3.5" />
+                            <span>Perubahan Stok</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -744,76 +839,102 @@ export const InventoryManagement: React.FC = () => {
       )}
 
       {/* ========================================================
-          SUB-TAB 3: OPNAME AUDIT HISTORY
+          SUB-TAB 3: OPNAME HISTORY (PERUBAHAN DARI WEEKLY STOCK)
       ======================================================== */}
       {activeSubTab === 'history' && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-[#e5ece7] bg-white p-5 shadow-2xs">
-            <h3 className="text-base font-bold text-slate-800 mb-1">Opname Audit Log</h3>
+            <h3 className="text-base font-bold text-slate-800 mb-1">
+              Opname History (Riwayat Perubahan Stok)
+            </h3>
             <p className="text-xs text-slate-500 mb-4">
-              Historical record of physical counts and inventory variance reconciliations
+              Mencatat seluruh perubahan stok yang terjadi saat melakukan edit stok pada menu Weekly Stock Opname oleh Kasir maupun Manager
             </p>
 
-            <div className="space-y-4">
-              {stockOpnames.map((record) => (
-                <div
-                  key={record.id}
-                  className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] p-4 space-y-3"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#e5ece7] pb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800 text-sm">{record.outletName}</span>
-                        <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                          {record.status.toUpperCase()}
+            {stockOpnames.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[#e5ece7] p-8 text-center text-slate-400 text-xs">
+                <FiHistory className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                <p className="font-semibold text-slate-600">Belum ada riwayat perubahan stok</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Lakukan perubahan stok pada tab Weekly Stock Opname untuk mencatat riwayat perubahan fisik di sini.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {stockOpnames.map((record) => (
+                  <div
+                    key={record.id}
+                    className="rounded-xl border border-[#e5ece7] bg-[#fafbf9] p-4 space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#e5ece7] pb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800 text-sm">{record.outletName}</span>
+                          <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            TERAPKAN STOK
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Dilakukan oleh: <strong className="text-slate-700">{record.performedBy}</strong> • Tanggal: {formatDate(record.date)}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs font-semibold text-slate-500 bg-white border border-[#e5ece7] px-2.5 py-1 rounded-lg">
+                          {record.items.length} Bahan Disesuaikan
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Performed by: <strong className="text-slate-700">{record.performedBy}</strong> on {formatDate(record.date)}
+                    </div>
+
+                    {record.notes && (
+                      <p className="text-xs text-slate-600 italic bg-white p-2.5 rounded-lg border border-[#e5ece7]">
+                        &ldquo;{record.notes}&rdquo;
                       </p>
-                    </div>
+                    )}
 
-                    <div className="text-right">
-                      <span className="text-xs text-slate-400 block">Total Discrepancy Cost:</span>
-                      <span
-                        className={`text-sm font-bold ${
-                          record.totalVarianceCost < 0 ? 'text-rose-600' : 'text-emerald-600'
-                        }`}
-                      >
-                        {formatCurrency(record.totalVarianceCost)}
-                      </span>
+                    {/* Summary of items modified in this edit action */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {record.items.map((item, idx) => {
+                        const isIncrease = item.variance > 0;
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded-lg bg-white p-3 text-xs border border-[#e5ece7] space-y-1 shadow-2xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 truncate">
+                                {item.rawMaterialName}
+                              </span>
+                              <span
+                                className={`text-[11px] font-extrabold px-1.5 py-0.2 rounded ${
+                                  isIncrease
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                {isIncrease ? `+${item.variance}` : item.variance} {item.unit}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-slate-500">
+                              <span>Stok Semula: <strong className="text-slate-700">{item.systemStock}</strong></span>
+                              <span>➔</span>
+                              <span>Stok Baru: <strong className="text-[#507160] font-bold">{item.physicalStock}</strong> {item.unit}</span>
+                            </div>
+
+                            {item.reason && (
+                              <p className="text-[10px] text-slate-400 italic pt-1 border-t border-[#f4f7f5] truncate">
+                                Alasan: {item.reason}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-
-                  {record.notes && (
-                    <p className="text-xs text-slate-600 italic bg-white p-2.5 rounded-lg border border-[#e5ece7]">
-                      &ldquo;{record.notes}&rdquo;
-                    </p>
-                  )}
-
-                  {/* Summary of items in audit */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {record.items.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg bg-white p-2 text-[11px] border border-[#f1f4f2] flex justify-between items-center"
-                      >
-                        <span className="font-medium text-slate-700 truncate max-w-[150px]">
-                          {item.rawMaterialName}
-                        </span>
-                        <span
-                          className={`font-bold ${
-                            item.variance < 0 ? 'text-rose-600' : 'text-slate-600'
-                          }`}
-                        >
-                          {item.variance > 0 ? `+${item.variance}` : item.variance} {item.unit}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -982,7 +1103,7 @@ export const InventoryManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700">Stok Awal</label>
                   <input
@@ -1018,6 +1139,16 @@ export const InventoryManagement: React.FC = () => {
                     className="mt-1 w-full rounded-xl border border-[#e5ece7] px-2.5 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">Tanggal Kadaluwarsa</label>
+                <input
+                  type="date"
+                  value={newItemExpiryDate}
+                  onChange={(e) => setNewItemExpiryDate(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[#e5ece7]">
@@ -1141,6 +1272,16 @@ export const InventoryManagement: React.FC = () => {
                     className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs focus:border-[#618873] focus:outline-hidden"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">Tanggal Kadaluwarsa</label>
+                <input
+                  type="date"
+                  value={editExpiryDate}
+                  onChange={(e) => setEditExpiryDate(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#e5ece7] px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#618873] focus:outline-hidden"
+                />
               </div>
 
               <div className="p-3 bg-[#fafbf9] border border-[#e5ece7] rounded-xl text-[11px] text-slate-600">

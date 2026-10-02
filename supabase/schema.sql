@@ -62,6 +62,7 @@ create table public.ingredients (
   unit text not null, -- 'btl', 'pack', 'kg', 'dus', 'cup', 'pcs', 'pump'
   min_threshold numeric(12, 2) not null default 0,
   cost_per_unit numeric(12, 2) not null default 0,
+  expiry_date date,
   last_updated timestamptz default timezone('utc'::text, now()) not null,
   unique (outlet_id, name)
 );

@@ -28,6 +28,7 @@ export interface InventoryItem {
   unit: UnitType;
   minThreshold: number;
   costPerUnit: number; // Cost in IDR / USD
+  expiryDate?: string; // Tanggal Kadaluwarsa (YYYY-MM-DD)
   lastUpdated: string;
 }
 
@@ -47,6 +48,7 @@ export interface Product {
   price: number;
   description: string;
   bom: BOMItem[]; // Bill of Materials mapping
+  equipment?: string[]; // Daftar peralatan pembuatan (Espresso Machine, Grinder, Cup Sealer, dll)
   isActive: boolean;
 }
 
@@ -102,6 +104,24 @@ export interface StockDepletionLog {
   createdAt: string;
 }
 
+export type StockMovementType = 'pos_sale' | 'restock' | 'opname_adjustment' | 'waste' | 'transfer';
+
+export interface StockMovementLog {
+  id: string;
+  outletId: string;
+  outletName: string;
+  rawMaterialId: string;
+  rawMaterialName: string;
+  type: StockMovementType;
+  changeQuantity: number; // Positif untuk masuk (+), negatif untuk keluar (-)
+  unit: UnitType;
+  stockAfter: number;
+  referenceId?: string; // No Order, Ref Opname, Ref Restock
+  reason?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface StockOpnameItem {
   rawMaterialId: string;
   rawMaterialName: string;
@@ -146,5 +166,7 @@ export interface Expense {
   paymentMethod: string;
   recordedBy: string;
   notes?: string;
-  receiptUrl?: string;
+  receiptUrl?: string; // URL / Base64 image atau file nota
+  receiptName?: string; // Nama file asli (misal: nota_listrik.pdf)
+  receiptType?: string; // image/jpeg, image/png, application/pdf
 }

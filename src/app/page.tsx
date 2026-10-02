@@ -10,7 +10,6 @@ import { ProductManagement } from '@/components/products/ProductManagement';
 import { InventoryManagement } from '@/components/inventory/InventoryManagement';
 import { ExpenseTracking } from '@/components/expenses/ExpenseTracking';
 import { ReportsView } from '@/components/reports/ReportsView';
-import { SupabaseView } from '@/components/settings/SupabaseView';
 
 export default function Home() {
   const { activeTab } = useApp();
@@ -30,8 +29,6 @@ export default function Home() {
         return <ExpenseTracking />;
       case 'reports':
         return <ReportsView />;
-      case 'supabase':
-        return <SupabaseView />;
       default:
         return <ManagerDashboard />;
     }
